@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:validate
+        env:
+          DATABASE_URL: postgresql://careermatch:careermatch_local@localhost:5432/careermatch?schema=public
+      - run: pnpm lint:node
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm --filter api test
+      - run: pnpm --filter api test:e2e
+
+  ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/ai/requirements-dev.txt
+      - run: pip install -r services/ai/requirements-dev.txt
+      - run: ruff check services/ai
+      - run: pytest services/ai/tests

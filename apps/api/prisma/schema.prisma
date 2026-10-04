@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  STUDENT
+  EMPLOYER
+  ADMIN
+}
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum JobStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  REJECTED
+  CLOSED
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  REVIEWING
+  SHORTLISTED
+  INTERVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InterviewStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  COMPLETED
+  CANCELLED
+}
+
+enum CvAnalysisStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  CV_ANALYSIS_COMPLETED
+  JOB_RECOMMENDATION
+  NEW_APPLICATION
+  APPLICATION_WITHDRAWN
+  APPLICATION_SHORTLISTED
+  INTERVIEW_INVITATION
+  INTERVIEW_CONFIRMED
+  INTERVIEW_DECLINED
+  APPLICATION_ACCEPTED
+  APPLICATION_REJECTED
+  COMPANY_VERIFICATION_REQUIRED
+  COMPANY_VERIFIED
+  JOB_APPROVAL_REQUIRED
+  JOB_APPROVED
+  JOB_REJECTED
+  NEW_REPORT
+}
+
+model User {
+  id            String           @id @default(uuid()) @db.Uuid
+  email         String           @unique
+  passwordHash  String
+  role          UserRole
+  status        AccountStatus    @default(PENDING_VERIFICATION)
+  emailVerified DateTime?
+  student       StudentProfile?
+  employer      EmployerProfile?
+  notifications Notification[]
+  auditLogs     AuditLog[]       @relation("AuditActor")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([role, status])
+}
+
+model StudentProfile {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @unique @db.Uuid
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName       String
+  headline       String?
+  biography      String?
+  careerGoal     String?
+  location       String?
+  graduationYear Int?
+  skills         StudentSkill[]
+  cvs            Cv[]
+  applications   Application[]
+  savedJobs      SavedJob[]
+  matches        JobMatch[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model EmployerProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  position  String?
+  companyId String?  @db.Uuid
+  company   Company? @relation(fields: [companyId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id                 String             @id @default(uuid()) @db.Uuid
+  name               String
+  description        String?
+  website            String?
+  location           String?
+  taxCode            String?            @unique
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  employers          EmployerProfile[]
+  jobs               Job[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model CareerCategory {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  description String?
+  jobs        Job[]
+}
+
+model Skill {
+  id              String             @id @default(uuid()) @db.Uuid
+  name            String             @unique
+  normalizedName  String             @unique
+  studentSkills   StudentSkill[]
+  jobSkills       JobSkill[]
+  extractedSkills CvExtractedSkill[]
+}
+
+model StudentSkill {
+  studentId String         @db.Uuid
+  skillId   String         @db.Uuid
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skill     Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  level     Int?
+  source    String?
+
+  @@id([studentId, skillId])
+}
+
+model Cv {
+  id           String         @id @default(uuid()) @db.Uuid
+  studentId    String         @db.Uuid
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  originalName String
+  storageKey   String         @unique
+  mimeType     String
+  sizeBytes    Int
+  analyses     CvAnalysis[]
+  createdAt    DateTime       @default(now())
+
+  @@index([studentId, createdAt])
+}
+
+model CvAnalysis {
+  id           String             @id @default(uuid()) @db.Uuid
+  cvId         String             @db.Uuid
+  cv           Cv                 @relation(fields: [cvId], references: [id], onDelete: Cascade)
+  status       CvAnalysisStatus   @default(QUEUED)
+  provider     String
+  model        String
+  modelVersion String?
+  summary      Json?
+  errorCode    String?
+  skills       CvExtractedSkill[]
+  completedAt  DateTime?
+  createdAt    DateTime           @default(now())
+}
+
+model CvExtractedSkill {
+  analysisId String     @db.Uuid
+  skillId    String     @db.Uuid
+  analysis   CvAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  skill      Skill      @relation(fields: [skillId], references: [id])
+  confidence Float
+  evidence   String?
+
+  @@id([analysisId, skillId])
+}
+
+model Job {
+  id           String          @id @default(uuid()) @db.Uuid
+  companyId    String          @db.Uuid
+  company      Company         @relation(fields: [companyId], references: [id])
+  categoryId   String?         @db.Uuid
+  category     CareerCategory? @relation(fields: [categoryId], references: [id])
+  title        String
+  description  String
+  location     String?
+  workMode     String?
+  status       JobStatus       @default(DRAFT)
+  publishedAt  DateTime?
+  skills       JobSkill[]
+  applications Application[]
+  savedBy      SavedJob[]
+  matches      JobMatch[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([companyId, status])
+}
+
+model JobSkill {
+  jobId    String  @db.Uuid
+  skillId  String  @db.Uuid
+  job      Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill    Skill   @relation(fields: [skillId], references: [id])
+  required Boolean @default(true)
+  weight   Float   @default(1)
+
+  @@id([jobId, skillId])
+}
+
+model SavedJob {
+  studentId String         @db.Uuid
+  jobId     String         @db.Uuid
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  job       Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@id([studentId, jobId])
+}
+
+model JobMatch {
+  id            String         @id @default(uuid()) @db.Uuid
+  studentId     String         @db.Uuid
+  jobId         String         @db.Uuid
+  student       StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  score         Float
+  skillScore    Float
+  semanticScore Float?
+  matchedSkills Json
+  missingSkills Json
+  explanation   String
+  engineVersion String
+  createdAt     DateTime       @default(now())
+
+  @@unique([studentId, jobId, engineVersion])
+  @@index([jobId, score])
+  @@index([studentId, score])
+}
+
+model Application {
+  id          String                     @id @default(uuid()) @db.Uuid
+  studentId   String                     @db.Uuid
+  jobId       String                     @db.Uuid
+  student     StudentProfile             @relation(fields: [studentId], references: [id])
+  job         Job                        @relation(fields: [jobId], references: [id])
+  status      ApplicationStatus          @default(SUBMITTED)
+  coverLetter String?
+  history     ApplicationStatusHistory[]
+  interviews  Interview[]
+  submittedAt DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@unique([studentId, jobId])
+  @@index([jobId, status])
+}
+
+model ApplicationStatusHistory {
+  id            String             @id @default(uuid()) @db.Uuid
+  applicationId String             @db.Uuid
+  application   Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  reason        String?
+  changedById   String             @db.Uuid
+  createdAt     DateTime           @default(now())
+}
+
+model Interview {
+  id            String          @id @default(uuid()) @db.Uuid
+  applicationId String          @db.Uuid
+  application   Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheduledAt   DateTime
+  durationMin   Int
+  meetingUrl    String?
+  location      String?
+  status        InterviewStatus @default(PROPOSED)
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+model Report {
+  id         String    @id @default(uuid()) @db.Uuid
+  reporterId String    @db.Uuid
+  targetType String
+  targetId   String
+  reason     String
+  status     String    @default("OPEN")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?  @db.Uuid
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+}

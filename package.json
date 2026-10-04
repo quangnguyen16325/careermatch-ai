@@ -1,0 +1,30 @@
+{
+  "name": "careermatch-ai",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.15.0",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter web --filter api dev",
+    "build": "pnpm -r --if-present build",
+    "lint": "pnpm lint:node && pnpm ai:lint",
+    "lint:node": "pnpm -r --if-present lint",
+    "test": "pnpm -r --if-present test && pnpm ai:test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "infra:up": "docker compose up -d postgres redis",
+    "infra:down": "docker compose down",
+    "db:generate": "pnpm --filter api prisma:generate",
+    "db:migrate": "pnpm --filter api prisma:migrate",
+    "db:validate": "pnpm --filter api prisma:validate",
+    "ai:lint": "services/ai/.venv/bin/python -m ruff check services/ai",
+    "ai:test": "services/ai/.venv/bin/python -m pytest services/ai/tests"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.2"
+  }
+}
