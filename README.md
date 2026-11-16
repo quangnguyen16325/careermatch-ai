@@ -76,3 +76,12 @@ pnpm db:validate      # validate Prisma schema
 - Add tests and documentation as part of the feature Definition of Done.
 
 See [docs/architecture.md](docs/architecture.md), [docs/development.md](docs/development.md), and [CONTRIBUTING.md](CONTRIBUTING.md) before implementing a module.
+
+## Project documentation and task traceability
+
+Read [the project baseline](docs/project-baseline.md) before starting a documentation
+task. It links the team's existing Charter, WBS, reports, and risk register so that
+completed analysis is reviewed and reused. The [WBS-to-Issue mapping](docs/wbs-issue-map.json)
+covers all 28 source work packages and 112 tracked Issues. See the
+[evidence reconciliation log](docs/evidence-reconciliation.md) for report claims
+that still require verification against actual project records.
