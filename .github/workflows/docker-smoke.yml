@@ -20,6 +20,8 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait --wait-timeout 180
       - run: python3 scripts/smoke-stack.py
+      - name: Verify registration against disposable PostgreSQL
+        run: docker compose exec -T -e REGISTRATION_TEST_DISPOSABLE=1 api node test/registration.database.mjs
       - name: Verify database extensions and migration
         run: |
           docker compose exec -T postgres psql -U careermatch -d careermatch -v ON_ERROR_STOP=1 -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pgcrypto');"
