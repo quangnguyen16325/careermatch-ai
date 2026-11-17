@@ -86,6 +86,9 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-demo-refresh-secret-change-before-sharing}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      JWT_ISSUER: ${JWT_ISSUER:-careermatch-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-careermatch-web}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       CV_STORAGE_PATH: /app/.data/cvs
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"

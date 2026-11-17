@@ -33,7 +33,13 @@ export class RegistrationFilter implements ExceptionFilter {
     const messages: Record<string, string> = {
       VALIDATION_ERROR: 'Request validation failed.',
       EMAIL_ALREADY_EXISTS: 'An account with this email already exists.',
-      RATE_LIMITED: 'Too many registration requests. Try again later.',
+      INVALID_CREDENTIALS: 'Invalid email or password.',
+      AUTHENTICATION_REQUIRED: 'A valid session is required.',
+      INVALID_REFRESH_TOKEN: 'Refresh token is invalid or expired.',
+      FORBIDDEN: 'Request is not permitted.',
+      EMAIL_NOT_VERIFIED: 'Verify your email before signing in.',
+      ACCOUNT_SUSPENDED: 'Account is suspended.',
+      RATE_LIMITED: 'Too many requests. Try again later.',
       INTERNAL_ERROR: 'An unexpected error occurred.',
     };
     response.status(status).json({

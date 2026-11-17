@@ -3,8 +3,8 @@
 Prepared for CM-036. Review date: 2026-11-17.
 
 This document defines the first frontend/backend integration slice. Service
-information, health, and `POST /auth/register` are implemented; see
-[registration delivery and limitations](registration.md). All other NestJS
+information, health, registration, login, refresh, logout, and GET auth/me are implemented; see
+[registration](registration.md) and [sessions](sessions.md) for delivery and limitations. All other NestJS
 endpoints below are **proposed and not implemented**. Frontend work should use mocks until each
 endpoint is delivered and verified in Swagger. Contract agreement is not proof
 of feature completion or final scope approval.
@@ -97,7 +97,7 @@ The email-verification slice must be delivered before a public registration/logi
 demo is considered end-to-end complete; do not silently mark accounts ACTIVE.
 Seeded local test accounts may be ACTIVE and must remain clearly test-only.
 
-### POST /auth/login — public, proposed
+### POST /auth/login — public, implemented (CM-041)
 
 Request: `{ "email": "student@example.com", "password": "example-password-change-me" }`.
 Return `200` for an ACTIVE account:
@@ -123,7 +123,7 @@ return the same `401 INVALID_CREDENTIALS`. Check credentials before returning
 `EMAIL_NOT_VERIFIED` or `ACCOUNT_SUSPENDED`. Token TTLs come from
 `JWT_ACCESS_TTL`/`JWT_REFRESH_TTL`; `expiresIn` is computed seconds, not hardcoded.
 
-### Session transport and lifecycle — proposed
+### Session transport and lifecycle — implemented (CM-041)
 
 Access tokens travel as `Authorization: Bearer <token>` and stay in frontend
 memory. Refresh tokens are returned only in an HttpOnly cookie named
@@ -151,9 +151,10 @@ clients must send the configured Origin too. CORS alone does not prevent CSRF.
 
 Access JWTs include `sub`, `sid`, role, `iat`, `exp`, issuer, and audience. Verify
 signature, expiry, issuer/audience, live session, and current account status on
-every protected request. The session table, rotation/reuse tracking, JWT issuer/
-audience configuration, hash implementation, cookie parser, CSRF enforcement,
-and rate limits are implementation prerequisites; they are absent from the starter.
+every protected request. Session persistence, rotation/reuse tracking, JWT issuer/
+audience configuration, password hashing, cookie parsing, Origin checks and local
+rate limits are implemented in CM-040/041. Future feature routes still need the
+reusable role/ownership guards in CM-042; distributed rate limits remain pending.
 
 ### Verification and recovery — CM-043, proposed pending scope confirmation
 
