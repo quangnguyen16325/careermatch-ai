@@ -1,5 +1,9 @@
 # Local Development
 
+See [the API integration contract](api-contracts.md) for the working Authentication,
+Student Profile, CV, and FastAPI boundaries. It distinguishes implemented starter
+endpoints from proposed routes so frontend mocks do not assume an API is available.
+
 ## Environment
 
 Copy `.env.example` to `.env`. Local defaults are intentionally non-production values. Generate new secrets for any shared or deployed environment.
