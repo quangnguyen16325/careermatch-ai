@@ -37,3 +37,8 @@ export class RegistrationGuard implements CanActivate {
     throw new HttpException({ code: 'RATE_LIMITED', retryAfter }, 429);
   }
 }
+
+// Separate quota bucket for session endpoints; registration traffic must not
+// consume an existing user's refresh/login allowance.
+@Injectable()
+export class SessionRateGuard extends RegistrationGuard {}
