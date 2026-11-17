@@ -79,6 +79,10 @@ See [docs/architecture.md](docs/architecture.md), [docs/development.md](docs/dev
 
 ## Project documentation and task traceability
 
+For parallel frontend/backend development, start with the
+[API integration contract](docs/api-contracts.md). Proposed endpoints are explicitly
+marked and must not be confused with the routes currently exposed in Swagger.
+
 Read [the project baseline](docs/project-baseline.md) before starting a documentation
 task. It links the team's existing Charter, WBS, reports, and risk register so that
 completed analysis is reviewed and reused. The [WBS-to-Issue mapping](docs/wbs-issue-map.json)
