@@ -1,5 +1,10 @@
 # CareerMatch AI Architecture
 
+See [identity and career-profile data design](identity-data-design.md) for the
+review of current Prisma models, proposed session/recovery persistence, profile
+extensions, and transaction/migration prerequisites. Proposed models are not yet
+implemented and do not replace the recruitment model review in CM-082.
+
 ## Design principles
 
 - Start as a modular monolith for the core API to keep a student-sized team productive.
