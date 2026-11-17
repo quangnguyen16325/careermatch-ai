@@ -1,0 +1,37 @@
+name: Docker smoke
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: careermatch-ci
+      LLM_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build --wait --wait-timeout 180
+      - run: python3 scripts/smoke-stack.py
+      - name: Verify database extensions and migration
+        run: |
+          docker compose exec -T postgres psql -U careermatch -d careermatch -v ON_ERROR_STOP=1 -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pgcrypto');"
+          docker compose run --rm migrate pnpm exec prisma migrate status
+          docker compose exec -T redis redis-cli ping
+      - name: Verify repeat startup
+        run: |
+          docker compose up -d --wait --wait-timeout 180
+          python3 scripts/smoke-stack.py
+      - name: Diagnostics
+        if: failure()
+        run: docker compose logs --no-color --tail=100
+      - name: Stop disposable CI stack
+        if: always()
+        run: docker compose down --volumes

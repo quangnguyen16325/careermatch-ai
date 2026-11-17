@@ -27,6 +27,18 @@ The API is the system of record. The AI service returns structured analysis and 
 
 ## First run
 
+To run the complete local stack with Docker only, see [Docker setup](docs/docker.md):
+
+```bash
+cp .env.example .env
+docker compose up -d --build --wait --wait-timeout 180
+```
+
+Frontend is available at http://localhost:5173. PostgreSQL, Redis, migration, API,
+and mock AI start in dependency order. The migration container exits successfully;
+the other services remain running. The host-development workflow below is an
+alternative when you need hot reload.
+
 ```bash
 cp .env.example .env
 pnpm install

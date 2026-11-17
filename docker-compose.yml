@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-careermatch}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-careermatch_local}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,6 +33,107 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME:-careermatch-ai}-api
+    build:
+      context: .
+      target: api
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://${POSTGRES_USER:-careermatch}:${POSTGRES_PASSWORD:-careermatch_local}@postgres:5432/${POSTGRES_DB:-careermatch}?schema=public}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["pnpm", "exec", "prisma", "migrate", "deploy"]
+
+  ai:
+    build:
+      context: .
+      dockerfile: services/ai/Dockerfile
+    restart: unless-stopped
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    ports:
+      - "127.0.0.1:${AI_SERVICE_PORT:-8001}:8001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    image: ${COMPOSE_PROJECT_NAME:-careermatch-ai}-api
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      WEB_ORIGIN: http://localhost:${WEB_PORT:-5173}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://${POSTGRES_USER:-careermatch}:${POSTGRES_PASSWORD:-careermatch_local}@postgres:5432/${POSTGRES_DB:-careermatch}?schema=public}
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai:8001
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-demo-access-secret-change-before-sharing}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-demo-refresh-secret-change-before-sharing}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      CV_STORAGE_PATH: /app/.data/cvs
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    volumes:
+      - cv_data:/app/.data/cvs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      ai:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "--input-type=module",
+          "-e",
+          "const r = await fetch('http://127.0.0.1:3000/api/v1/health'); if (!r.ok) process.exit(1)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        VITE_API_URL: /api/v1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:
+  cv_data:

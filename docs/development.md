@@ -1,5 +1,8 @@
 # Local Development
 
+For Docker-only full-stack startup (no local Node/Python needed), follow
+[the Docker guide](docker.md). The commands below are the host hot-reload workflow.
+
 See [the API integration contract](api-contracts.md) for the working Authentication,
 Student Profile, CV, and FastAPI boundaries. It distinguishes implemented starter
 endpoints from proposed routes so frontend mocks do not assume an API is available.
