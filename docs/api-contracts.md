@@ -2,9 +2,10 @@
 
 Prepared for CM-036. Review date: 2026-11-17.
 
-This document defines the first frontend/backend integration slice. Except for
-the service-information and health endpoints, the NestJS endpoints below are
-**proposed and not implemented**. Frontend work should use mocks until each
+This document defines the first frontend/backend integration slice. Service
+information, health, and `POST /auth/register` are implemented; see
+[registration delivery and limitations](registration.md). All other NestJS
+endpoints below are **proposed and not implemented**. Frontend work should use mocks until each
 endpoint is delivered and verified in Swagger. Contract agreement is not proof
 of feature completion or final scope approval.
 
@@ -73,7 +74,7 @@ responses provide `Retry-After`. These envelopes are not yet implemented.
 
 ## Authentication — CM-040 through CM-043
 
-### POST /auth/register — public, proposed
+### POST /auth/register — public, implemented (CM-040)
 
 ```json
 {
