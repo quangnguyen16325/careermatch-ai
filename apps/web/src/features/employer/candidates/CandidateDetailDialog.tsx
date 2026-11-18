@@ -184,7 +184,7 @@ function CandidateDetailDialog({ candidate, onClose, onSaveNotes, onStatusChange
 
       {confirmReject ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4">
-          <section aria-labelledby="reject-confirm-title" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="alertdialog">
+          <section aria-labelledby="reject-confirm-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6" role="alertdialog">
             <h3 className="text-lg font-semibold text-slate-950" id="reject-confirm-title">Reject this application?</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">This will mark {candidate.name}'s application as rejected in this preview.</p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -203,7 +203,7 @@ function CandidateDetailDialog({ candidate, onClose, onSaveNotes, onStatusChange
 function ResumePreview({ candidate, onClose }: { candidate: CandidateApplication; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4" onClick={onClose}>
-      <section aria-labelledby="resume-preview-title" aria-modal="true" className="w-full max-w-xl rounded-2xl bg-slate-100 p-4 shadow-2xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog">
+      <section aria-labelledby="resume-preview-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-slate-100 p-4 shadow-2xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-semibold text-slate-950" id="resume-preview-title">Resume preview</h3>

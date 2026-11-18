@@ -3,6 +3,7 @@ import { Save, X } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import type { CompanyProfile } from "../types";
+import { isValidHttpUrl } from "../validation";
 
 type CompanyProfileFormProps = {
   profile: CompanyProfile;
@@ -38,11 +39,11 @@ function CompanyProfileForm({ profile, onCancel, onSave }: CompanyProfileFormPro
       const value = form[field.name].trim();
       if (field.required && !value) nextErrors[field.name] = `${field.label} is required.`;
     }
-    if (
-      form.website.trim() &&
-      !/^https?:\/\/.+\..+/.test(form.website.trim())
-    ) {
-      nextErrors.website = "Enter a valid website URL, including https://.";
+    for (const name of ["website", "logoUrl", "coverUrl"] as const) {
+      const value = form[name].trim();
+      if (value && !isValidHttpUrl(value)) {
+        nextErrors[name] = "Enter a valid URL, including https://.";
+      }
     }
     if (
       form.contactEmail.trim() &&
@@ -100,11 +101,13 @@ function CompanyProfileForm({ profile, onCancel, onSave }: CompanyProfileFormPro
           <div className="grid gap-4 sm:grid-cols-2 sm:col-span-2">
             <label className="block text-sm font-medium text-slate-700">
               Logo image URL
-              <input className={inputClass("logoUrl")} onChange={(event) => updateField("logoUrl", event.target.value)} placeholder="https://example.com/logo.png" type="url" value={form.logoUrl} />
+              <input aria-invalid={Boolean(errors.logoUrl)} aria-describedby={errors.logoUrl ? "logoUrl-error" : undefined} className={inputClass("logoUrl")} onChange={(event) => updateField("logoUrl", event.target.value)} placeholder="https://example.com/logo.png" type="url" value={form.logoUrl} />
+              {errors.logoUrl ? <span className="mt-1 block text-xs text-rose-700" id="logoUrl-error">{errors.logoUrl}</span> : null}
             </label>
             <label className="block text-sm font-medium text-slate-700">
               Cover image URL
-              <input className={inputClass("coverUrl")} onChange={(event) => updateField("coverUrl", event.target.value)} placeholder="https://example.com/cover.jpg" type="url" value={form.coverUrl} />
+              <input aria-invalid={Boolean(errors.coverUrl)} aria-describedby={errors.coverUrl ? "coverUrl-error" : undefined} className={inputClass("coverUrl")} onChange={(event) => updateField("coverUrl", event.target.value)} placeholder="https://example.com/cover.jpg" type="url" value={form.coverUrl} />
+              {errors.coverUrl ? <span className="mt-1 block text-xs text-rose-700" id="coverUrl-error">{errors.coverUrl}</span> : null}
             </label>
           </div>
         </div>
