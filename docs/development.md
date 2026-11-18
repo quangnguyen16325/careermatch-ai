@@ -1,8 +1,52 @@
 # Local Development
 
+For Docker-only full-stack startup (no local Node/Python needed), follow
+[the Docker guide](docker.md). The commands below are the host hot-reload workflow.
+
+See [the API integration contract](api-contracts.md) for the working Authentication,
+Student Profile, CV, and FastAPI boundaries. It distinguishes implemented starter
+endpoints from proposed routes so frontend mocks do not assume an API is available.
+
 ## Environment
 
 Copy `.env.example` to `.env`. Local defaults are intentionally non-production values. Generate new secrets for any shared or deployed environment.
+
+NestJS, Prisma CLI, Vite, and FastAPI all read the repository-root `.env`, independent
+of the workspace working directory. Exported process variables take precedence
+(including CI and deployment secrets). Workspace-local files such as `apps/api/.env`
+and `services/ai/.env` are not loaded. Do not copy `.env` into multiple workspaces.
+Vite also supports its normal mode-specific files at the root; only `VITE_`-prefixed
+variables are exposed to client code. Never put secrets behind a `VITE_` name.
+
+From the repository root (Linux/macOS/WSL or Git Bash):
+
+```bash
+cp .env.example .env
+pnpm install --frozen-lockfile
+pnpm db:validate
+pnpm db:generate
+```
+
+PowerShell uses `Copy-Item .env.example .env`. Do not overwrite an existing `.env`;
+compare it with the template and add missing keys. Prisma validation/generation
+does not require a running database. Migration and connectivity verification are
+separate CM-039 checks and require `pnpm infra:up` first.
+
+When starting FastAPI from `services/ai`, the root `.env` is still used:
+
+```bash
+cd services/ai
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload --port 8001
+```
+
+For a production API build in the monorepo, run
+`node apps/api/dist/main.js` from the root after `pnpm build`.
+Without the workspace marker (for example a standalone deployment artifact),
+NestJS uses injected process variables and does not search the working directory
+for a different `.env`. Deployments must supply their environment explicitly.
 
 ## Database changes
 
