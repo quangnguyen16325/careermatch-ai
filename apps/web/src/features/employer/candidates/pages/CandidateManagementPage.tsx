@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { BriefcaseBusiness, Building2, Sparkles } from "lucide-react";
 import { WorkspaceLayout } from "../../../../components/layout/WorkspaceLayout";
 import { FeedbackMessage } from "../../components/FeedbackMessage";
+import { EmployerWorkspaceHeader } from "../../components/EmployerWorkspaceHeader";
 import { mockCandidates } from "../mockCandidates";
 import { CandidateDetailDialog } from "../CandidateDetailDialog";
 import { CandidateManagementDashboard } from "../CandidateManagementDashboard";
@@ -44,24 +44,11 @@ function CandidateManagementPage() {
   return (
     <WorkspaceLayout
       className="space-y-6"
-      header={(
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-emerald-400 text-slate-950"><Sparkles size={20} /></span>
-            <div>
-              <p className="font-semibold tracking-tight text-slate-950">CareerMatch AI</p>
-              <p className="text-xs text-slate-500">Employer preview</p>
-            </div>
-          </div>
-          <div className="hidden items-center gap-2 text-sm text-slate-600 sm:flex">
-            <Building2 size={16} /> Northstar Labs
-          </div>
-        </div>
-      )}
+      header={<EmployerWorkspaceHeader />}
     >
       {notice ? <FeedbackMessage tone="success">{notice}</FeedbackMessage> : null}
       <div className="mb-7 flex items-center gap-2 text-xs font-medium text-slate-500">
-        <BriefcaseBusiness size={14} /> Hiring workspace <span aria-hidden="true">/</span> Applications
+        Hiring workspace <span aria-hidden="true">/</span> Applications
       </div>
       <CandidateManagementDashboard candidates={candidates} onSelect={(candidate) => { setSelectedId(candidate.id); setNotice(""); }} />
       {selectedCandidate ? (
