@@ -7,6 +7,14 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   envDir: fileURLToPath(new URL("../../", import.meta.url)),
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      "/api/v1": {
+        target: "http://localhost:3000",
+        changeOrigin: false,
+      },
+    },
+  },
   build: {
     rollupOptions: {
       input: {
