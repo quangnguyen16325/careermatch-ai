@@ -94,6 +94,8 @@ See [docs/architecture.md](docs/architecture.md), [docs/development.md](docs/dev
 For parallel frontend/backend development, start with the
 [API integration contract](docs/api-contracts.md). Proposed endpoints are explicitly
 marked and must not be confused with the routes currently exposed in Swagger.
+Backend feature modules should follow the [authorization guide](docs/authorization.md)
+for shared authentication, role policies, and private student resource ownership.
 
 Read [the project baseline](docs/project-baseline.md) before starting a documentation
 task. It links the team's existing Charter, WBS, reports, and risk register so that
