@@ -24,6 +24,9 @@ jobs:
       - run: pnpm db:validate
         env:
           DATABASE_URL: postgresql://careermatch:careermatch_local@localhost:5432/careermatch?schema=public
+      - run: pnpm db:generate
+        env:
+          DATABASE_URL: postgresql://careermatch:careermatch_local@localhost:5432/careermatch?schema=public
       - run: pnpm lint:node
       - run: pnpm typecheck
       - run: pnpm build

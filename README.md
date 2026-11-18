@@ -27,6 +27,18 @@ The API is the system of record. The AI service returns structured analysis and 
 
 ## First run
 
+To run the complete local stack with Docker only, see [Docker setup](docs/docker.md):
+
+```bash
+cp .env.example .env
+docker compose up -d --build --wait --wait-timeout 180
+```
+
+Frontend is available at http://localhost:5173. PostgreSQL, Redis, migration, API,
+and mock AI start in dependency order. The migration container exits successfully;
+the other services remain running. The host-development workflow below is an
+alternative when you need hot reload.
+
 ```bash
 cp .env.example .env
 pnpm install
@@ -52,6 +64,7 @@ Local endpoints:
 - API: http://localhost:3000/api/v1
 - Swagger: http://localhost:3000/docs
 - AI service: http://localhost:8001/docs
+- Local email inbox (full Docker stack): http://localhost:8025
 
 ## Commands
 
@@ -76,3 +89,20 @@ pnpm db:validate      # validate Prisma schema
 - Add tests and documentation as part of the feature Definition of Done.
 
 See [docs/architecture.md](docs/architecture.md), [docs/development.md](docs/development.md), and [CONTRIBUTING.md](CONTRIBUTING.md) before implementing a module.
+
+## Project documentation and task traceability
+
+For parallel frontend/backend development, start with the
+[API integration contract](docs/api-contracts.md). Proposed endpoints are explicitly
+marked and must not be confused with the routes currently exposed in Swagger.
+Backend feature modules should follow the [authorization guide](docs/authorization.md)
+for shared authentication, role policies, and private student resource ownership.
+See [email verification and password recovery](docs/account-recovery.md) for the
+registration → verification → login flow and local Mailpit setup.
+
+Read [the project baseline](docs/project-baseline.md) before starting a documentation
+task. It links the team's existing Charter, WBS, reports, and risk register so that
+completed analysis is reviewed and reused. The [WBS-to-Issue mapping](docs/wbs-issue-map.json)
+covers all 28 source work packages and 112 tracked Issues. See the
+[evidence reconciliation log](docs/evidence-reconciliation.md) for report claims
+that still require verification against actual project records.
