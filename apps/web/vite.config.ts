@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         main: "index.html",
         employer: "employer.html",
+        candidates: "candidates.html",
       },
     },
   },
