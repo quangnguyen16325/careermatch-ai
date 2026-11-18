@@ -11,6 +11,7 @@ export default defineConfig({
         main: "index.html",
         employer: "employer.html",
         candidates: "candidates.html",
+        admin: "admin.html",
       },
     },
   },
