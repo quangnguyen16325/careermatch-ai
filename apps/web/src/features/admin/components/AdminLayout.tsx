@@ -1,16 +1,9 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Building2, ChevronDown, ClipboardCheck, Flag, LayoutDashboard, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { ChevronDown, ShieldCheck, Sparkles } from "lucide-react";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
+import { AdminSectionNavigation } from "./AdminSectionNavigation";
 import type { AdminSection } from "../types";
-
-const navigation: { label: AdminSection; icon: typeof LayoutDashboard }[] = [
-  { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Users", icon: Users },
-  { label: "Employers", icon: Building2 },
-  { label: "Job moderation", icon: ClipboardCheck },
-  { label: "Reports", icon: Flag },
-];
 
 type AdminLayoutProps = {
   activeSection: AdminSection;
@@ -38,15 +31,7 @@ function AdminLayout({ activeSection, children, onNavigate }: AdminLayoutProps) 
         </div>
         <div className="px-4 pt-6">
           <p className="px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Workspace</p>
-          <nav aria-label="Admin sections" className="mt-3 space-y-1">
-            {navigation.map(({ icon: Icon, label }) => (
-              <button aria-current={activeSection === label ? "page" : undefined} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium transition ${activeSection === label ? "bg-emerald-50 text-emerald-900" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`} key={label} onClick={() => navigate(label)} type="button">
-                <Icon className={activeSection === label ? "text-emerald-700" : "text-slate-400"} size={18} />
-                {label}
-                {label === "Job moderation" ? <StatusBadge className="ml-auto" tone="warning">3</StatusBadge> : null}
-              </button>
-            ))}
-          </nav>
+          <AdminSectionNavigation activeSection={activeSection} onNavigate={navigate} variant="sidebar" />
         </div>
         <div className="mt-auto border-t border-slate-100 p-5">
           <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
@@ -82,15 +67,7 @@ function AdminLayout({ activeSection, children, onNavigate }: AdminLayoutProps) 
               </button>
             </div>
           </div>
-          {mobileMenuOpen ? (
-            <nav aria-label="Admin sections" className="grid grid-cols-2 gap-2 border-t border-slate-100 p-3 sm:grid-cols-3 lg:hidden">
-              {navigation.map(({ icon: Icon, label }) => (
-                <button aria-current={activeSection === label ? "page" : undefined} className={`flex min-h-10 items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold ${activeSection === label ? "bg-emerald-50 text-emerald-900" : "text-slate-600 hover:bg-slate-50"}`} key={label} onClick={() => navigate(label)} type="button">
-                  <Icon size={16} />{label}
-                </button>
-              ))}
-            </nav>
-          ) : null}
+          {mobileMenuOpen ? <AdminSectionNavigation activeSection={activeSection} onNavigate={navigate} variant="mobile" /> : null}
         </header>
         <main className="mx-auto w-full max-w-[96rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {children}
