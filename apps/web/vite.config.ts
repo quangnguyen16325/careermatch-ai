@@ -7,4 +7,14 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   envDir: fileURLToPath(new URL("../../", import.meta.url)),
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        employer: "employer.html",
+        candidates: "candidates.html",
+        admin: "admin.html",
+      },
+    },
+  },
 });
