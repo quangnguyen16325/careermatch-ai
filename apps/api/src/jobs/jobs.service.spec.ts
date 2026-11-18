@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +20,9 @@ describe('JobsService', () => {
       employerProfile: {
         findUnique: ReturnType<typeof vi.fn>;
       };
+      studentProfile: {
+        findUnique: ReturnType<typeof vi.fn>;
+      };
       company: {
         findUnique: ReturnType<typeof vi.fn>;
       };
@@ -30,6 +34,7 @@ describe('JobsService', () => {
       };
       job: {
         findUnique: ReturnType<typeof vi.fn>;
+        findFirst: ReturnType<typeof vi.fn>;
         findMany: ReturnType<typeof vi.fn>;
         count: ReturnType<typeof vi.fn>;
         create: ReturnType<typeof vi.fn>;
@@ -39,6 +44,13 @@ describe('JobsService', () => {
       jobSkill: {
         deleteMany: ReturnType<typeof vi.fn>;
         createMany: ReturnType<typeof vi.fn>;
+      };
+      savedJob: {
+        findUnique: ReturnType<typeof vi.fn>;
+        findMany: ReturnType<typeof vi.fn>;
+        count: ReturnType<typeof vi.fn>;
+        create: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
       };
       auditLog: {
         create: ReturnType<typeof vi.fn>;
@@ -70,6 +82,9 @@ describe('JobsService', () => {
         employerProfile: {
           findUnique: vi.fn(),
         },
+        studentProfile: {
+          findUnique: vi.fn(),
+        },
         company: {
           findUnique: vi.fn(),
         },
@@ -81,6 +96,7 @@ describe('JobsService', () => {
         },
         job: {
           findUnique: vi.fn(),
+          findFirst: vi.fn(),
           findMany: vi.fn(),
           count: vi.fn(),
           create: vi.fn(),
@@ -90,6 +106,13 @@ describe('JobsService', () => {
         jobSkill: {
           deleteMany: vi.fn(),
           createMany: vi.fn(),
+        },
+        savedJob: {
+          findUnique: vi.fn(),
+          findMany: vi.fn(),
+          count: vi.fn(),
+          create: vi.fn(),
+          delete: vi.fn(),
         },
         auditLog: {
           create: vi.fn(),
@@ -640,6 +663,164 @@ describe('JobsService', () => {
           body: expect.stringContaining(reason),
         }),
       });
+    });
+  });
+
+  describe('searchPublicJobs', () => {
+    it('queries published jobs with filters and pagination', async () => {
+      mockDb.client.job.count.mockResolvedValue(1);
+      mockDb.client.job.findMany.mockResolvedValue([
+        { id: 'job-1', title: 'NestJS Developer', status: JobStatus.PUBLISHED },
+      ]);
+
+      const result = await service.searchPublicJobs({
+        page: 1,
+        pageSize: 10,
+        search: 'NestJS',
+        workMode: 'REMOTE',
+        location: 'HCM',
+        skillIds: ['skill-1'],
+      });
+
+      expect(result.meta.total).toBe(1);
+      expect(result.data).toHaveLength(1);
+      expect(mockDb.client.job.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: JobStatus.PUBLISHED,
+            workMode: 'REMOTE',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('getPublicJobById', () => {
+    it('throws NotFoundException if job does not exist or is not PUBLISHED', async () => {
+      mockDb.client.job.findFirst.mockResolvedValue(null);
+
+      await expect(service.getPublicJobById('job-unknown')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('returns published job details', async () => {
+      const publicJob = {
+        id: 'job-1',
+        title: 'Backend Engineer',
+        status: JobStatus.PUBLISHED,
+      };
+      mockDb.client.job.findFirst.mockResolvedValue(publicJob);
+
+      const result = await service.getPublicJobById('job-1');
+      expect(result).toEqual(publicJob);
+    });
+  });
+
+  describe('saved jobs', () => {
+    const mockStudent = { id: 'student-1', userId: 'user-student-1' };
+
+    it('throws NotFoundException if student profile does not exist when saving', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.saveJob('user-student-1', 'job-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws NotFoundException if job is not found or not published', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.job.findFirst.mockResolvedValue(null);
+
+      await expect(service.saveJob('user-student-1', 'job-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws ConflictException if job is already saved', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.job.findFirst.mockResolvedValue({ id: 'job-1', status: JobStatus.PUBLISHED });
+      mockDb.client.savedJob.findUnique.mockResolvedValue({
+        studentId: 'student-1',
+        jobId: 'job-1',
+      });
+
+      await expect(service.saveJob('user-student-1', 'job-1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('saves a published job successfully', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.job.findFirst.mockResolvedValue({ id: 'job-1', status: JobStatus.PUBLISHED });
+      mockDb.client.savedJob.findUnique.mockResolvedValue(null);
+
+      const result = await service.saveJob('user-student-1', 'job-1');
+
+      expect(result.success).toBe(true);
+      expect(mockDb.client.savedJob.create).toHaveBeenCalledWith({
+        data: {
+          studentId: 'student-1',
+          jobId: 'job-1',
+        },
+      });
+    });
+
+    it('unsaves a saved job successfully', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.savedJob.findUnique.mockResolvedValue({
+        studentId: 'student-1',
+        jobId: 'job-1',
+      });
+
+      const result = await service.unsaveJob('user-student-1', 'job-1');
+
+      expect(result.success).toBe(true);
+      expect(mockDb.client.savedJob.delete).toHaveBeenCalledWith({
+        where: {
+          studentId_jobId: {
+            studentId: 'student-1',
+            jobId: 'job-1',
+          },
+        },
+      });
+    });
+
+    it('throws NotFoundException when trying to unsave a non-saved job', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.savedJob.findUnique.mockResolvedValue(null);
+
+      await expect(service.unsaveJob('user-student-1', 'job-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('returns paginated saved jobs for student', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.savedJob.count.mockResolvedValue(1);
+      mockDb.client.savedJob.findMany.mockResolvedValue([
+        {
+          createdAt: new Date(),
+          job: { id: 'job-1', title: 'React Dev' },
+        },
+      ]);
+
+      const result = await service.getSavedJobs('user-student-1', {
+        page: 1,
+        pageSize: 10,
+      });
+
+      expect(result.meta.total).toBe(1);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe('job-1');
+    });
+
+    it('checks if a job is saved', async () => {
+      mockDb.client.studentProfile.findUnique.mockResolvedValue(mockStudent);
+      mockDb.client.savedJob.findUnique.mockResolvedValue({ studentId: 'student-1', jobId: 'job-1' });
+
+      const result = await service.isJobSaved('user-student-1', 'job-1');
+      expect(result.isSaved).toBe(true);
     });
   });
 });
