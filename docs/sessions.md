@@ -3,7 +3,8 @@
 Implemented under `/api/v1/auth`: POST login, POST refresh, POST logout, GET me.
 Only ACTIVE accounts can sign in. Verification/reset/email delivery remain
 CM-043; there is no public activation shortcut for PENDING_VERIFICATION accounts.
-Feature-route role/ownership guards remain CM-042.
+Reusable role/ownership checks are delivered in CM-042; see
+[authorization](authorization.md) before implementing protected feature routes.
 
 ## Client contract
 

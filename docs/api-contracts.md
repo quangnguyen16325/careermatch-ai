@@ -26,8 +26,11 @@ of feature completion or final scope approval.
 
 Existing NestJS `GET /api/v1` and `GET /api/v1/health` are public. `/docs` is the
 current generated Swagger UI; it describes implemented routes only. Existing
-`ValidationPipe` rejects unknown DTO fields. Role guards, stable error envelopes,
-session management, and rate limits described below still require implementation.
+`ValidationPipe` rejects unknown DTO fields. Session management and bounded local
+auth rate limits are implemented. [Authorization helpers](authorization.md) are
+available for feature modules; each new route must apply its own role and ownership
+policy. The auth filter implements the error envelope for auth routes; feature
+routes must explicitly adopt it. Other proposed behavior below remains future work.
 
 ## Shared wire conventions
 

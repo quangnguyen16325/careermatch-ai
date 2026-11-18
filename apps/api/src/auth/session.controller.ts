@@ -26,6 +26,9 @@ import { LoginDto } from './session.dto.js';
 import { SessionService } from './session.service.js';
 import { RegistrationFilter } from './registration.filter.js';
 import { SessionRateGuard } from './registration.guard.js';
+import { AuthGuard } from '../common/guards/auth.guard.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
 
 const COOKIE = 'careermatch_refresh';
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
@@ -168,6 +171,7 @@ export class SessionController {
   }
 
   @Get('me')
+  @UseGuards(AuthGuard)
   @Header('Cache-Control', 'no-store')
   @ApiBearerAuth()
   @ApiOperation({
@@ -176,7 +180,7 @@ export class SessionController {
   })
   @ApiResponse({ status: 200, description: 'Public User only' })
   @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
-  me(@Req() req: Request) {
-    return this.sessions.me(req.headers.authorization);
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return user;
   }
 }
