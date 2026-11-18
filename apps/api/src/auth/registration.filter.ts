@@ -36,6 +36,8 @@ export class RegistrationFilter implements ExceptionFilter {
       INVALID_CREDENTIALS: 'Invalid email or password.',
       AUTHENTICATION_REQUIRED: 'A valid session is required.',
       INVALID_REFRESH_TOKEN: 'Refresh token is invalid or expired.',
+      INVALID_VERIFICATION_TOKEN: 'Verification token is invalid or expired.',
+      INVALID_RESET_TOKEN: 'Password reset token is invalid or expired.',
       FORBIDDEN: 'Request is not permitted.',
       RESOURCE_NOT_FOUND: 'Resource not found.',
       EMAIL_NOT_VERIFIED: 'Verify your email before signing in.',

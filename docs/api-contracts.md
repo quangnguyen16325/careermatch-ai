@@ -3,8 +3,8 @@
 Prepared for CM-036. Review date: 2026-11-17.
 
 This document defines the first frontend/backend integration slice. Service
-information, health, registration, login, refresh, logout, and GET auth/me are implemented; see
-[registration](registration.md) and [sessions](sessions.md) for delivery and limitations. All other NestJS
+information, health, registration, login, refresh, logout, GET auth/me, verification and recovery are implemented; see
+[registration](registration.md), [sessions](sessions.md), and [account recovery](account-recovery.md) for delivery and limitations. All other NestJS
 endpoints below are **proposed and not implemented**. Frontend work should use mocks until each
 endpoint is delivered and verified in Swagger. Contract agreement is not proof
 of feature completion or final scope approval.
@@ -96,8 +96,8 @@ Never expose a partial user/profile pair if a transaction fails.
 
 Return `201` with the public User shape below and no session tokens. For this
 working proposal, registration keeps the schema's `PENDING_VERIFICATION` default.
-The email-verification slice must be delivered before a public registration/login
-demo is considered end-to-end complete; do not silently mark accounts ACTIVE.
+Call resend-verification after registration and follow the CM-043 email flow;
+frontend verification/reset pages and public SMTP delivery remain separate work.
 Seeded local test accounts may be ACTIVE and must remain clearly test-only.
 
 ### POST /auth/login — public, implemented (CM-041)
@@ -157,24 +157,26 @@ signature, expiry, issuer/audience, live session, and current account status on
 every protected request. Session persistence, rotation/reuse tracking, JWT issuer/
 audience configuration, password hashing, cookie parsing, Origin checks and local
 rate limits are implemented in CM-040/041. Future feature routes still need the
-reusable role/ownership guards in CM-042; distributed rate limits remain pending.
+reusable role/ownership guards delivered in CM-042; distributed rate limits remain pending.
 
-### Verification and recovery — CM-043, proposed pending scope confirmation
+### Verification and recovery — CM-043, implemented
 
 - `POST /auth/verify-email`: `{ "token": "<single-use-token>" }`; valid token
   returns `204` and atomically activates the account. Invalid/expired/used token
   returns `400 INVALID_VERIFICATION_TOKEN`. No access/refresh token is issued.
 - `POST /auth/resend-verification`: `{ "email": "student@example.com" }`;
-  always return `202` with `{ "message": "If eligible, verification instructions will be sent." }`.
+  return `202` with `{ "message": "If eligible, verification instructions will be sent." }` for valid email input, regardless of account eligibility. Capacity/rate limits may return 429.
 - `POST /auth/forgot-password`: same email shape; always return `202` with
   `{ "message": "If eligible, password reset instructions will be sent." }`.
 - `POST /auth/reset-password`: `{ "token": "<single-use-token>", "newPassword": "another-example-password" }`;
   valid request returns `204`, changes the password, consumes the token, and
   revokes all sessions. Invalid/expired/used token returns `400 INVALID_RESET_TOKEN`.
 
-Use hashed, expiring, single-use verification/reset tokens; never return them in
-API payloads or logs. Apply password rules and rate limits. Choose email transport
-and verification/reset TTLs during CM-043; do not invent delivery evidence.
+Tokens are hashed, expiring and single use. Default TTLs are 24h for verification
+and 30m for reset. SMTP transport captures local messages in Mailpit; no external
+mailbox delivery is claimed. Email jobs are bounded, in-process work, and 202 is
+not delivery confirmation. See [the delivery guide](account-recovery.md) for
+cooldowns, retry behavior, limits, configuration and frontend fragment links.
 
 ## Student and Career Profile — CM-044, proposed
 
@@ -315,8 +317,8 @@ Do not enable external LLM traffic until provider and data-handling settings are
 
 ## Implementation handoff and acceptance
 
-This proposal makes routine integration choices explicit. Scope approval for
-verification/recovery and structured profile collections remains pending. Changes
+This proposal makes routine integration choices explicit. Verification/recovery
+are now implemented as documented in CM-043; structured profile collections remain proposed. Changes
 to these shapes must be discussed in the linked Issue/PR before updating both
 frontend mocks and backend DTOs; implemented DTOs and Swagger must match this document.
 
@@ -336,6 +338,7 @@ Capture real test and CI results. Planned dates are not delivery dates.
 
 CM-036 delivers this written integration proposal. CM-037 resolves database gaps;
 CM-038/039 verify environment/CI; CM-040/041/042 implement the initial auth slice.
-CM-043 is required for public registration → verification → login under this proposal.
+CM-043 delivers the backend verification/recovery flow with local SMTP evidence;
+frontend pages and public mail delivery remain separate work.
 Do not wait for the entire backend to finish: build frontend mocks and AI fixtures
 against the agreed contract while implementation progresses in parallel.

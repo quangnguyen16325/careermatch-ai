@@ -33,6 +33,21 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local email sink: no messages leave the development stack.
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 200
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+      - "127.0.0.1:${SMTP_LOCAL_PORT:-1025}:1025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   migrate:
     image: ${COMPOSE_PROJECT_NAME:-careermatch-ai}-api
     build:
@@ -89,6 +104,15 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-careermatch-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-careermatch-web}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      MAIL_MODE: ${MAIL_MODE:-local}
+      SMTP_HOST: ${SMTP_DOCKER_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-CareerMatch AI <noreply@careermatch.local>}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      AUTH_PUBLIC_WEB_URL: ${AUTH_PUBLIC_WEB_URL:-http://localhost:${WEB_PORT:-5173}}
+      AUTH_VERIFY_TTL: ${AUTH_VERIFY_TTL:-24h}
+      AUTH_RESET_TTL: ${AUTH_RESET_TTL:-30m}
       CV_STORAGE_PATH: /app/.data/cvs
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
@@ -98,6 +122,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      mailpit:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

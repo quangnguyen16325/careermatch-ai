@@ -74,5 +74,5 @@ docker compose exec -T -e OWNERSHIP_TEST_DISPOSABLE=1 api node test/ownership.da
 
 Run against a disposable stack only. Fixtures are randomized and removed afterward.
 Docker CI runs this alongside registration, live-session and stack smoke tests.
-Email verification/password reset remain CM-043; feature routes remain separately
-tracked and must adopt these policies when implemented.
+[Email verification/password reset](account-recovery.md) are delivered in CM-043;
+feature routes remain separately tracked and must adopt these policies when implemented.
