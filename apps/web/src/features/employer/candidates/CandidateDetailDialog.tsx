@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { useState } from "react";
 import { BriefcaseBusiness, CalendarDays, Check, Download, FileText, GraduationCap, Mail, MapPin, Phone, UserRound, X } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
@@ -46,7 +47,7 @@ function CandidateDetailDialog({ candidate, onClose, onSaveNotes, onStatusChange
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-5" onClick={onClose}>
-      <section
+      <Modal onClose={onClose}
         aria-labelledby="candidate-detail-title"
         aria-modal="true"
         className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-slate-50 shadow-2xl sm:rounded-3xl"
@@ -180,18 +181,18 @@ function CandidateDetailDialog({ candidate, onClose, onSaveNotes, onStatusChange
             </Card>
           </aside>
         </div>
-      </section>
+      </Modal>
 
       {confirmReject ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4">
-          <section aria-labelledby="reject-confirm-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6" role="alertdialog">
+          <Modal onClose={() => setConfirmReject(false)} aria-labelledby="reject-confirm-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6" role="alertdialog">
             <h3 className="text-lg font-semibold text-slate-950" id="reject-confirm-title">Reject this application?</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">This will mark {candidate.name}'s application as rejected in this preview.</p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button onClick={() => setConfirmReject(false)} variant="secondary">Keep application</Button>
               <Button onClick={() => moveTo("Rejected", "Application rejected by employer")} variant="danger">Confirm rejection</Button>
             </div>
-          </section>
+          </Modal>
         </div>
       ) : null}
 
@@ -203,7 +204,7 @@ function CandidateDetailDialog({ candidate, onClose, onSaveNotes, onStatusChange
 function ResumePreview({ candidate, onClose }: { candidate: CandidateApplication; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4" onClick={onClose}>
-      <section aria-labelledby="resume-preview-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-slate-100 p-4 shadow-2xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog">
+      <Modal onClose={onClose} aria-labelledby="resume-preview-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-slate-100 p-4 shadow-2xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-semibold text-slate-950" id="resume-preview-title">Resume preview</h3>
@@ -219,7 +220,7 @@ function ResumePreview({ candidate, onClose }: { candidate: CandidateApplication
           <p className="text-sm leading-6 text-slate-700">{candidate.summary}</p>
           <p className="mt-6 text-xs leading-5 text-slate-500">This is representative mock content. No candidate document is connected in this frontend preview.</p>
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }

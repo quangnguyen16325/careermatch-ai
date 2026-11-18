@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { useState } from "react";
 import { Button, type ButtonVariant } from "../../../components/ui/Button";
 
@@ -37,7 +38,7 @@ function AdminActionDialog({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4" onClick={(event) => event.stopPropagation()}>
-      <section aria-labelledby="admin-action-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6" role="alertdialog">
+      <Modal onClose={onCancel} aria-labelledby="admin-action-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6" role="alertdialog">
         <h2 className="text-lg font-semibold text-slate-950" id="admin-action-title">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
         {requireReason ? (
@@ -51,7 +52,7 @@ function AdminActionDialog({
           <Button onClick={onCancel} variant="secondary">Cancel</Button>
           <Button onClick={confirm} variant={tone}>{confirmLabel}</Button>
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }

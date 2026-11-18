@@ -37,3 +37,13 @@ On Windows, the equivalent command prefix is `pnpm.cmd`.
 ## Data and integration status
 
 Employer, candidate, and admin pages currently use local mock data and frontend state. Changes made in a page are a wireframe preview and are not persisted to a backend. These screens do not call an API; backend integration remains future work.
+
+## Review verification
+
+The Employer/Admin previews were checked in Chrome at 1440px and 390px widths.
+Checks cover all four HTML entry points, draft validation/save, admin navigation,
+candidate status progression, nested rejection/resume/report dialogs, keyboard Tab
+containment, Escape dismissal and focus restoration. Shared dialogs use the native
+modal API so background controls are inert. Cancelling a nested action keeps its
+parent detail view open. These checks validate mock interactions; API integration,
+role-protected routing and persistence remain separate tasks.

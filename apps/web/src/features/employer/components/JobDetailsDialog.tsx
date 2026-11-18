@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { CalendarDays, MapPin, Pencil, X } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
@@ -16,7 +17,7 @@ function JobDetailsDialog({ job, expired, onClose, onEdit }: JobDetailsDialogPro
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-5" onClick={onClose}>
-      <section
+      <Modal onClose={onClose}
         aria-labelledby="job-details-title"
         aria-modal="true"
         className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-8"
@@ -43,7 +44,7 @@ function JobDetailsDialog({ job, expired, onClose, onEdit }: JobDetailsDialogPro
           <Button onClick={onClose} variant="secondary">Close</Button>
           <Button onClick={() => onEdit(job)} icon={<Pencil size={16} />}>Edit job</Button>
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }

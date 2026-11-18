@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { useMemo, useState } from "react";
 import { CalendarDays, Flag, Search, ShieldAlert } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
@@ -70,7 +71,7 @@ function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminRepor
   const [action, setAction] = useState<ReportStatus | null>(null);
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-4" onClick={onClose}>
-      <section aria-labelledby="report-detail-title" aria-modal="true" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
+      <Modal onClose={onClose} aria-labelledby="report-detail-title" aria-modal="true" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
         <div className="flex flex-wrap items-center gap-2"><ReportStatusBadge status={report.status} /><span className="text-xs text-slate-500">Submitted {formatDate(report.submittedAt)}</span></div>
         <h2 className="mt-3 text-xl font-semibold text-slate-950" id="report-detail-title">{report.targetLabel}</h2>
         <p className="mt-1 text-sm text-slate-600">{report.targetType} report · {report.reason}</p>
@@ -85,7 +86,7 @@ function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminRepor
           {report.status === "Open" ? <Button onClick={() => setAction("Reviewing")} variant="primary">Mark reviewing</Button> : null}
           {report.status === "Reviewing" ? <><Button onClick={() => setAction("Dismissed")} variant="ghost">Dismiss report</Button><Button onClick={() => setAction("Resolved")} variant="primary">Resolve report</Button></> : null}
         </div>
-      </section>
+      </Modal>
       {action ? (
         <AdminActionDialog
           confirmLabel={action === "Reviewing" ? "Start review" : action === "Resolved" ? "Resolve report" : "Dismiss report"}

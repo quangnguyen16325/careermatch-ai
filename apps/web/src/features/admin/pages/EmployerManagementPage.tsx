@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { useMemo, useState } from "react";
 import { Building2, Globe2, Mail, Search, Users } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
@@ -99,7 +100,7 @@ function EmployerDetailsDialog({ employer, onClose, onReject, onVerify }: { empl
   const tone: StatusTone = employer.status === "Verified" ? "success" : employer.status === "Pending" ? "warning" : "danger";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-4" onClick={onClose}>
-      <section aria-labelledby="employer-detail-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
+      <Modal onClose={onClose} aria-labelledby="employer-detail-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
         <div className="flex items-start gap-4">
           <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-emerald-50 text-emerald-800">{employer.logoUrl ? <img alt={`${employer.company} logo`} className="size-full object-cover" src={employer.logoUrl} /> : <CompanyInitials name={employer.company} />}</span>
           <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold text-slate-950" id="employer-detail-title">{employer.company}</h2><StatusBadge tone={tone}>{employer.status}</StatusBadge></div><p className="mt-1 text-sm text-slate-600">{employer.industry} · {employer.size}</p></div>
@@ -119,7 +120,7 @@ function EmployerDetailsDialog({ employer, onClose, onReject, onVerify }: { empl
             <Button onClick={onVerify}>Verify employer</Button>
           </> : null}
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }

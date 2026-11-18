@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { useMemo, useState } from "react";
 import { Search, Users } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
@@ -107,7 +108,7 @@ function UserDetailsDialog({ user, onClose }: { user: AdminUser; onClose: () => 
   const tone: StatusTone = user.status === "Active" ? "success" : user.status === "Pending" ? "warning" : "danger";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-4" onClick={onClose}>
-      <section aria-labelledby="user-detail-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog">
+      <Modal onClose={onClose} aria-labelledby="user-detail-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-6" onClick={(event) => event.stopPropagation()} role="dialog">
         <span className="grid size-14 place-items-center rounded-2xl bg-slate-100 text-lg font-semibold text-slate-700">{initials(user.name)}</span>
         <h2 className="mt-4 text-xl font-semibold text-slate-950" id="user-detail-title">{user.name}</h2>
         <p className="mt-1 text-sm text-slate-600">{user.email}</p>
@@ -118,7 +119,7 @@ function UserDetailsDialog({ user, onClose }: { user: AdminUser; onClose: () => 
           <div><dt className="text-xs text-slate-500">Location</dt><dd className="mt-1 font-medium text-slate-800">{user.location}</dd></div>
         </dl>
         <Button className="mt-5 w-full" onClick={onClose} variant="secondary">Close details</Button>
-      </section>
+      </Modal>
     </div>
   );
 }

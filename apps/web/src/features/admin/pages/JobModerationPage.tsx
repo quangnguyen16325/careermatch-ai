@@ -1,3 +1,4 @@
+import { Modal } from "../../../components/ui/Modal";
 import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarDays, ClipboardCheck, MapPin, Search } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
@@ -88,7 +89,7 @@ function JobReviewDialog({ job, onAction, onClose }: { job: ModerationJob; onAct
   const canModerate = job.status === "Pending" || job.status === "Flagged";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-4" onClick={onClose}>
-      <section aria-labelledby="job-review-title" aria-modal="true" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
+      <Modal onClose={onClose} aria-labelledby="job-review-title" aria-modal="true" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
         <div className="flex flex-wrap items-center gap-2"><JobStatusBadge status={job.status} /><span className="text-xs text-slate-500">Submitted {formatDate(job.submittedAt)}</span></div>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950" id="job-review-title">{job.title}</h2>
         <p className="mt-1 text-sm text-slate-600">{job.company} <span aria-hidden="true">·</span> Posted by {job.employer}</p>
@@ -106,7 +107,7 @@ function JobReviewDialog({ job, onAction, onClose }: { job: ModerationJob; onAct
             <Button onClick={() => onAction("approve")}>Approve</Button>
           </> : null}
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }
