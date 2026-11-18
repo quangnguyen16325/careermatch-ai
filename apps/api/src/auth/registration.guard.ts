@@ -42,3 +42,6 @@ export class RegistrationGuard implements CanActivate {
 // consume an existing user's refresh/login allowance.
 @Injectable()
 export class SessionRateGuard extends RegistrationGuard {}
+
+@Injectable()
+export class RecoveryRateGuard extends RegistrationGuard {}

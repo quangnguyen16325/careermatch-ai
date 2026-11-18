@@ -64,6 +64,7 @@ Local endpoints:
 - API: http://localhost:3000/api/v1
 - Swagger: http://localhost:3000/docs
 - AI service: http://localhost:8001/docs
+- Local email inbox (full Docker stack): http://localhost:8025
 
 ## Commands
 
@@ -96,6 +97,8 @@ For parallel frontend/backend development, start with the
 marked and must not be confused with the routes currently exposed in Swagger.
 Backend feature modules should follow the [authorization guide](docs/authorization.md)
 for shared authentication, role policies, and private student resource ownership.
+See [email verification and password recovery](docs/account-recovery.md) for the
+registration → verification → login flow and local Mailpit setup.
 
 Read [the project baseline](docs/project-baseline.md) before starting a documentation
 task. It links the team's existing Charter, WBS, reports, and risk register so that

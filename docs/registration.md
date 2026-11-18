@@ -1,9 +1,9 @@
 # Registration API — CM-040
 
-`POST /api/v1/auth/register` is implemented for STUDENT and EMPLOYER. Login,
-verification email delivery, refresh sessions and password recovery remain separate
-tasks (CM-041/042/043). New accounts stay PENDING_VERIFICATION and receive no token
-or cookie. Do not treat registration alone as an end-to-end login feature.
+`POST /api/v1/auth/register` is implemented for STUDENT and EMPLOYER. New accounts
+stay PENDING_VERIFICATION and receive no token or cookie. After registration call
+resend-verification explicitly; see [email verification/recovery](account-recovery.md)
+and [login/sessions](sessions.md) for the complete backend integration flow.
 
 Request and public User response follow the registration section of
 [the integration contract](api-contracts.md). Swagger `/docs` describes this route.

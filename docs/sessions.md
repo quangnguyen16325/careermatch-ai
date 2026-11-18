@@ -1,8 +1,8 @@
 # Login and JWT sessions — CM-041
 
 Implemented under `/api/v1/auth`: POST login, POST refresh, POST logout, GET me.
-Only ACTIVE accounts can sign in. Verification/reset/email delivery remain
-CM-043; there is no public activation shortcut for PENDING_VERIFICATION accounts.
+Only ACTIVE accounts can sign in. [Verification and password recovery](account-recovery.md)
+are implemented in CM-043; pending accounts must verify their email before login.
 Reusable role/ownership checks are delivered in CM-042; see
 [authorization](authorization.md) before implementing protected feature routes.
 
@@ -58,8 +58,8 @@ Refresh locks the PostgreSQL session row, rechecks all state, consumes the old
 token, and inserts a replacement in one transaction. Replay revocation commits
 before returning 401. Logout takes the same lock. Unknown digests do not revoke
 unrelated sessions. Login locks User and rechecks credentials/status before
-creating a session. Future password reset/suspension writes must coordinate using
-that User lock and revoke sessions according to the CM-037 design.
+creating a session. Password reset takes that User lock and revokes every session
+atomically. Future suspension writes must coordinate using the same lock.
 
 Session login/refresh and registration use separate bounded in-process quotas
 (10 per socket address per minute each). Password verification allows two active
@@ -82,8 +82,8 @@ It creates randomized accounts and cleans them with cascading session records.
 docker compose exec -T -e SESSION_TEST_DISPOSABLE=1 api node test/sessions.database.mjs
 ```
 
-Run only on a disposable stack. Public deployment, UAT, email verification,
-password reset and cross-site cookie hosting are not delivered by this slice.
+Run only on a disposable stack. Public deployment, UAT and cross-site cookie
+hosting remain separate work; see CM-043 for email/recovery delivery limitations.
 
 References: [jose signing](https://github.com/panva/jose/blob/main/docs/jwt/sign/classes/SignJWT.md)
 and [JWT verification](https://github.com/panva/jose/blob/main/docs/jwt/verify/functions/jwtVerify.md).
