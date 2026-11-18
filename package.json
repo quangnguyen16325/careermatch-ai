@@ -23,6 +23,7 @@
     "stack:logs": "docker compose logs -f --tail=100",
     "db:generate": "pnpm --filter api prisma:generate",
     "db:migrate": "pnpm --filter api prisma:migrate",
+    "db:seed": "pnpm --filter api prisma:seed",
     "db:validate": "pnpm --filter api prisma:validate",
     "ai:lint": "services/ai/.venv/bin/python -m ruff check services/ai",
     "ai:test": "services/ai/.venv/bin/python -m pytest services/ai/tests"
