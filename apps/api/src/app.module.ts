@@ -7,6 +7,7 @@ import { envFilePath } from './config/env-file.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CompaniesModule } from './companies/companies.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
+import { CatalogModule } from './catalog/catalog.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { JobsModule } from './jobs/jobs.module.js';
     AuthModule,
     CompaniesModule,
     JobsModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

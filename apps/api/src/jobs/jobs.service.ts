@@ -16,6 +16,8 @@ import { canTransitionJob } from '../recruitment/recruitment-transitions.js';
 import { CreateJobDto } from './dto/create-job.dto.js';
 import { UpdateJobDto } from './dto/update-job.dto.js';
 import { QueryEmployerJobsDto } from './dto/query-jobs.dto.js';
+import { ModerateJobDto } from './dto/moderate-job.dto.js';
+import { QueryAdminJobsDto } from './dto/query-admin-jobs.dto.js';
 
 @Injectable()
 export class JobsService {
@@ -584,6 +586,183 @@ export class JobsService {
         success: true,
         message: 'Draft job deleted successfully',
       };
+    });
+  }
+
+  async adminFindAll(query: QueryAdminJobsDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+
+    const where: Record<string, unknown> = {};
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.companyId) {
+      where.companyId = query.companyId;
+    }
+
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { company: { name: { contains: query.search, mode: 'insensitive' } } },
+      ];
+    }
+
+    const [total, data] = await Promise.all([
+      this.db.client.job.count({ where }),
+      this.db.client.job.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          company: true,
+          category: true,
+          skills: {
+            include: { skill: true },
+          },
+          _count: {
+            select: { applications: true },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async adminModerate(
+    adminUserId: string,
+    jobId: string,
+    dto: ModerateJobDto,
+  ) {
+    const job = await this.db.client.job.findUnique({
+      where: { id: jobId },
+      include: {
+        company: {
+          include: {
+            employers: {
+              select: { userId: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException({
+        code: 'JOB_NOT_FOUND',
+        message: 'Job not found',
+      });
+    }
+
+    if (
+      dto.status === JobStatus.REJECTED &&
+      (!dto.reason || dto.reason.trim().length < 10)
+    ) {
+      throw new BadRequestException({
+        code: 'REJECTION_REASON_REQUIRED',
+        message: 'A rejection reason of at least 10 characters is required',
+      });
+    }
+
+    const isValidTransition = canTransitionJob(
+      job.status,
+      dto.status,
+      UserRole.ADMIN,
+    );
+
+    if (!isValidTransition) {
+      throw new BadRequestException({
+        code: 'INVALID_STATE_TRANSITION',
+        message: `Cannot moderate job from ${job.status} to ${dto.status}`,
+      });
+    }
+
+    return this.db.client.$transaction(async (tx) => {
+      const updated = await tx.job.update({
+        where: { id: jobId },
+        data: {
+          status: dto.status,
+          publishedAt:
+            dto.status === JobStatus.PUBLISHED
+              ? new Date()
+              : dto.status === JobStatus.REJECTED
+                ? null
+                : job.publishedAt,
+        },
+        include: {
+          category: true,
+          skills: { include: { skill: true } },
+          company: true,
+        },
+      });
+
+      const action =
+        dto.status === JobStatus.PUBLISHED
+          ? 'JOB_APPROVED'
+          : dto.status === JobStatus.REJECTED
+            ? 'JOB_REJECTED'
+            : 'JOB_CLOSED';
+
+      await tx.auditLog.create({
+        data: {
+          actorId: adminUserId,
+          action,
+          entity: 'Job',
+          entityId: jobId,
+          metadata: {
+            previousStatus: job.status,
+            newStatus: dto.status,
+            reason: dto.reason ?? null,
+          },
+        },
+      });
+
+      if (dto.status === JobStatus.PUBLISHED || dto.status === JobStatus.REJECTED) {
+        const notificationType =
+          dto.status === JobStatus.PUBLISHED
+            ? NotificationType.JOB_APPROVED
+            : NotificationType.JOB_REJECTED;
+
+        const notificationTitle =
+          dto.status === JobStatus.PUBLISHED ? 'Job Approved' : 'Job Rejected';
+
+        const notificationBody =
+          dto.status === JobStatus.PUBLISHED
+            ? `Your job "${job.title}" has been approved and is now published.`
+            : `Your job "${job.title}" was rejected: ${dto.reason}`;
+
+        for (const employer of job.company.employers) {
+          await tx.notification.create({
+            data: {
+              userId: employer.userId,
+              type: notificationType,
+              title: notificationTitle,
+              body: notificationBody,
+              data: {
+                jobId: job.id,
+                companyId: job.companyId,
+                status: dto.status,
+                reason: dto.reason ?? null,
+              },
+            },
+          });
+        }
+      }
+
+      return updated;
     });
   }
 }

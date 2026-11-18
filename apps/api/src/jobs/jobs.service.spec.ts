@@ -501,4 +501,145 @@ describe('JobsService', () => {
       });
     });
   });
+
+  describe('adminFindAll', () => {
+    it('paginates and filters jobs for admin review', async () => {
+      mockDb.client.job.count.mockResolvedValue(1);
+      mockDb.client.job.findMany.mockResolvedValue([
+        { id: 'job-1', title: 'Tech Lead', status: JobStatus.PENDING_APPROVAL },
+      ]);
+
+      const result = await service.adminFindAll({
+        page: 1,
+        pageSize: 10,
+        status: JobStatus.PENDING_APPROVAL,
+        search: 'Tech',
+      });
+
+      expect(result.meta.total).toBe(1);
+      expect(result.data).toHaveLength(1);
+      expect(mockDb.client.job.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: JobStatus.PENDING_APPROVAL,
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('adminModerate', () => {
+    it('throws NotFoundException if job does not exist', async () => {
+      mockDb.client.job.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.adminModerate('admin-1', 'job-unknown', {
+          status: JobStatus.PUBLISHED,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException if rejecting without reason of >= 10 chars', async () => {
+      mockDb.client.job.findUnique.mockResolvedValue({
+        id: 'job-1',
+        status: JobStatus.PENDING_APPROVAL,
+        company: { employers: [{ userId: 'emp-1' }] },
+      });
+
+      await expect(
+        service.adminModerate('admin-1', 'job-1', {
+          status: JobStatus.REJECTED,
+          reason: 'bad job',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException if transition is invalid', async () => {
+      mockDb.client.job.findUnique.mockResolvedValue({
+        id: 'job-1',
+        status: JobStatus.DRAFT,
+        company: { employers: [{ userId: 'emp-1' }] },
+      });
+
+      // Admin cannot transition directly from DRAFT to PUBLISHED
+      await expect(
+        service.adminModerate('admin-1', 'job-1', {
+          status: JobStatus.PUBLISHED,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('approves job: publishes and notifies employers', async () => {
+      mockDb.client.job.findUnique.mockResolvedValue({
+        id: 'job-1',
+        title: 'Backend Engineer',
+        status: JobStatus.PENDING_APPROVAL,
+        companyId: 'comp-1',
+        company: { employers: [{ userId: 'emp-user-1' }] },
+      });
+      mockDb.client.job.update.mockResolvedValue({
+        id: 'job-1',
+        status: JobStatus.PUBLISHED,
+        publishedAt: new Date(),
+      });
+
+      const result = await service.adminModerate('admin-1', 'job-1', {
+        status: JobStatus.PUBLISHED,
+      });
+
+      expect(result.status).toBe(JobStatus.PUBLISHED);
+      expect(mockDb.client.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: 'admin-1',
+          action: 'JOB_APPROVED',
+          entity: 'Job',
+          entityId: 'job-1',
+        }),
+      });
+      expect(mockDb.client.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'emp-user-1',
+          type: NotificationType.JOB_APPROVED,
+        }),
+      });
+    });
+
+    it('rejects job with reason and notifies employers', async () => {
+      const reason = 'Job description is too vague and lacks requirements';
+      mockDb.client.job.findUnique.mockResolvedValue({
+        id: 'job-1',
+        title: 'Backend Engineer',
+        status: JobStatus.PENDING_APPROVAL,
+        companyId: 'comp-1',
+        company: { employers: [{ userId: 'emp-user-1' }] },
+      });
+      mockDb.client.job.update.mockResolvedValue({
+        id: 'job-1',
+        status: JobStatus.REJECTED,
+        publishedAt: null,
+      });
+
+      const result = await service.adminModerate('admin-1', 'job-1', {
+        status: JobStatus.REJECTED,
+        reason,
+      });
+
+      expect(result.status).toBe(JobStatus.REJECTED);
+      expect(mockDb.client.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: 'admin-1',
+          action: 'JOB_REJECTED',
+          entity: 'Job',
+          entityId: 'job-1',
+        }),
+      });
+      expect(mockDb.client.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'emp-user-1',
+          type: NotificationType.JOB_REJECTED,
+          body: expect.stringContaining(reason),
+        }),
+      });
+    });
+  });
 });
