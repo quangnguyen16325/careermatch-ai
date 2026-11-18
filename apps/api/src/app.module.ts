@@ -5,6 +5,7 @@ import { AppService } from './app.service.js';
 import { validateEnvironment } from './config/environment.js';
 import { envFilePath } from './config/env-file.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CompaniesModule } from './companies/companies.module.js';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AuthModule } from './auth/auth.module.js';
       validate: validateEnvironment,
     }),
     AuthModule,
+    CompaniesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -17,5 +17,6 @@ import { SessionController } from './session.controller.js';
     SessionRateGuard,
     SessionService,
   ],
+  exports: [DatabaseService, SessionService, PasswordService],
 })
 export class AuthModule {}
