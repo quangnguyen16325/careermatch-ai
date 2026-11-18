@@ -44,6 +44,18 @@ describe("resolveWorkspaceSession", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes the session again after a previous verification has completed", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: "first-token", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "user-1", role: "EMPLOYER", status: "ACTIVE" }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: "second-token", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "user-1", role: "ADMIN", status: "ACTIVE" }));
+
+    await expect(getWorkspaceSession()).resolves.toEqual({ status: "authenticated", role: "EMPLOYER" });
+    await expect(getWorkspaceSession()).resolves.toEqual({ status: "authenticated", role: "ADMIN" });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
   it("treats a missing or expired refresh session as unauthenticated", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ code: "INVALID_REFRESH_TOKEN" }, 401));
 
@@ -57,6 +69,17 @@ describe("resolveWorkspaceSession", () => {
       .mockResolvedValueOnce(jsonResponse({ code: "FORBIDDEN" }, 403));
 
     await expect(resolveWorkspaceSession()).resolves.toEqual({ status: "forbidden" });
+  });
+
+  it("fails closed when either authentication endpoint returns a server error", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 503));
+    await expect(resolveWorkspaceSession()).resolves.toEqual({ status: "unavailable" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: "signed-access-token", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(jsonResponse({ message: "Unavailable" }, 500));
+    await expect(resolveWorkspaceSession()).resolves.toEqual({ status: "unavailable" });
   });
 
   it("fails closed when the API cannot be reached or returns malformed identity", async () => {
