@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -18,6 +19,8 @@ import { UpdateJobDto } from './dto/update-job.dto.js';
 import { QueryEmployerJobsDto } from './dto/query-jobs.dto.js';
 import { ModerateJobDto } from './dto/moderate-job.dto.js';
 import { QueryAdminJobsDto } from './dto/query-admin-jobs.dto.js';
+import { QueryPublicJobsDto } from './dto/query-public-jobs.dto.js';
+import { QuerySavedJobsDto } from './dto/query-saved-jobs.dto.js';
 
 @Injectable()
 export class JobsService {
@@ -764,5 +767,294 @@ export class JobsService {
 
       return updated;
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public Job Search & Inspection APIs (Task #87)
+  // ---------------------------------------------------------------------------
+
+  async searchPublicJobs(query: QueryPublicJobsDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+
+    const where: Record<string, unknown> = {
+      status: JobStatus.PUBLISHED,
+    };
+
+    if (query.categoryId) {
+      where.categoryId = query.categoryId;
+    }
+
+    if (query.workMode) {
+      where.workMode = query.workMode;
+    }
+
+    if (query.location) {
+      where.OR = [
+        { location: { contains: query.location, mode: 'insensitive' } },
+        { company: { location: { contains: query.location, mode: 'insensitive' } } },
+      ];
+    }
+
+    if (query.skillIds?.length) {
+      where.skills = {
+        some: {
+          skillId: { in: query.skillIds },
+        },
+      };
+    }
+
+    if (query.search) {
+      const searchCondition = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { description: { contains: query.search, mode: 'insensitive' } },
+        { company: { name: { contains: query.search, mode: 'insensitive' } } },
+      ];
+
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: searchCondition },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = searchCondition;
+      }
+    }
+
+    const [total, data] = await Promise.all([
+      this.db.client.job.count({ where }),
+      this.db.client.job.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+        include: {
+          company: {
+            select: {
+              id: true,
+              name: true,
+              location: true,
+              website: true,
+              verificationStatus: true,
+            },
+          },
+          category: true,
+          skills: {
+            include: { skill: true },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async getPublicJobById(id: string) {
+    const job = await this.db.client.job.findFirst({
+      where: {
+        id,
+        status: JobStatus.PUBLISHED,
+      },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            location: true,
+            website: true,
+            verificationStatus: true,
+          },
+        },
+        category: true,
+        skills: {
+          include: { skill: true },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException({
+        code: 'JOB_NOT_FOUND',
+        message: 'Job not found or is not currently published',
+      });
+    }
+
+    return job;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Student Saved Jobs APIs (Task #87)
+  // ---------------------------------------------------------------------------
+
+  private async getStudentProfile(studentUserId: string) {
+    const student = await this.db.client.studentProfile.findUnique({
+      where: { userId: studentUserId },
+    });
+
+    if (!student) {
+      throw new NotFoundException({
+        code: 'STUDENT_PROFILE_NOT_FOUND',
+        message: 'Student profile does not exist for this account',
+      });
+    }
+
+    return student;
+  }
+
+  async saveJob(studentUserId: string, jobId: string) {
+    const student = await this.getStudentProfile(studentUserId);
+
+    const job = await this.db.client.job.findFirst({
+      where: {
+        id: jobId,
+        status: JobStatus.PUBLISHED,
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException({
+        code: 'JOB_NOT_FOUND',
+        message: 'Job not found or is not currently published',
+      });
+    }
+
+    const existing = await this.db.client.savedJob.findUnique({
+      where: {
+        studentId_jobId: {
+          studentId: student.id,
+          jobId,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException({
+        code: 'JOB_ALREADY_SAVED',
+        message: 'You have already saved this job',
+      });
+    }
+
+    await this.db.client.savedJob.create({
+      data: {
+        studentId: student.id,
+        jobId,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Job saved successfully',
+    };
+  }
+
+  async unsaveJob(studentUserId: string, jobId: string) {
+    const student = await this.getStudentProfile(studentUserId);
+
+    const existing = await this.db.client.savedJob.findUnique({
+      where: {
+        studentId_jobId: {
+          studentId: student.id,
+          jobId,
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'SAVED_JOB_NOT_FOUND',
+        message: 'Job is not in your saved list',
+      });
+    }
+
+    await this.db.client.savedJob.delete({
+      where: {
+        studentId_jobId: {
+          studentId: student.id,
+          jobId,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Job removed from saved list',
+    };
+  }
+
+  async getSavedJobs(studentUserId: string, query: QuerySavedJobsDto) {
+    const student = await this.getStudentProfile(studentUserId);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+
+    const where = { studentId: student.id };
+
+    const [total, savedRecords] = await Promise.all([
+      this.db.client.savedJob.count({ where }),
+      this.db.client.savedJob.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          job: {
+            include: {
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                  location: true,
+                  website: true,
+                },
+              },
+              category: true,
+              skills: {
+                include: { skill: true },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const data = savedRecords.map((item) => ({
+      savedAt: item.createdAt,
+      ...item.job,
+    }));
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async isJobSaved(studentUserId: string, jobId: string) {
+    const student = await this.getStudentProfile(studentUserId);
+    const saved = await this.db.client.savedJob.findUnique({
+      where: {
+        studentId_jobId: {
+          studentId: student.id,
+          jobId,
+        },
+      },
+    });
+
+    return { isSaved: !!saved };
   }
 }
