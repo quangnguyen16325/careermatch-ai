@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, ShieldCheck, Sparkles } from "lucide-react";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import { AdminSectionNavigation } from "./AdminSectionNavigation";
@@ -13,10 +13,14 @@ type AdminLayoutProps = {
 
 function AdminLayout({ activeSection, children, onNavigate }: AdminLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
 
-  function navigate(section: AdminSection) {
+  function navigate(section: AdminSection, returnFocusToMenuButton = false) {
     onNavigate(section);
-    setMobileMenuOpen(false);
+    if (returnFocusToMenuButton) {
+      setMobileMenuOpen(false);
+      mobileMenuButtonRef.current?.focus();
+    }
   }
 
   return (
@@ -62,12 +66,14 @@ function AdminLayout({ activeSection, children, onNavigate }: AdminLayoutProps) 
             <div className="ml-auto flex items-center gap-3">
               <span className="hidden text-sm text-slate-500 sm:inline">System status</span>
               <StatusBadge tone="success">Operational</StatusBadge>
-              <button aria-expanded={mobileMenuOpen} aria-label="Toggle admin navigation" className="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600 lg:hidden" onClick={() => setMobileMenuOpen((open) => !open)} type="button">
+              <button aria-controls="admin-section-navigation-mobile" aria-expanded={mobileMenuOpen} aria-label="Toggle admin navigation" className="grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 lg:hidden" onClick={() => setMobileMenuOpen((open) => !open)} ref={mobileMenuButtonRef} type="button">
                 <ChevronDown className={`transition ${mobileMenuOpen ? "rotate-180" : ""}`} size={18} />
               </button>
             </div>
           </div>
-          {mobileMenuOpen ? <AdminSectionNavigation activeSection={activeSection} onNavigate={navigate} variant="mobile" /> : null}
+          <div hidden={!mobileMenuOpen} id="admin-section-navigation-mobile">
+            <AdminSectionNavigation activeSection={activeSection} onNavigate={(section) => navigate(section, true)} variant="mobile" />
+          </div>
         </header>
         <main className="mx-auto w-full max-w-[96rem] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {children}

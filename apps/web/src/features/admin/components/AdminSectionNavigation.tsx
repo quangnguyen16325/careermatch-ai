@@ -21,7 +21,7 @@ function AdminSectionNavigation({ activeSection, onNavigate, variant }: AdminSec
   const listClassName = isSidebar ? "mt-3 space-y-1" : "grid grid-cols-2 gap-2 border-t border-slate-100 p-3 sm:grid-cols-3 lg:hidden";
 
   return (
-    <nav aria-label="Admin sections" className={listClassName}>
+    <div aria-label="Admin sections" className={listClassName} role="group">
       {navigation.map(({ icon: Icon, label }) => {
         const isActive = activeSection === label;
         const buttonClassName = isSidebar
@@ -30,8 +30,8 @@ function AdminSectionNavigation({ activeSection, onNavigate, variant }: AdminSec
 
         return (
           <button
-            aria-current={isActive ? "page" : undefined}
-            className={buttonClassName}
+            aria-pressed={isActive}
+            className={`${buttonClassName} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700`}
             key={label}
             onClick={() => onNavigate(label)}
             type="button"
@@ -42,7 +42,7 @@ function AdminSectionNavigation({ activeSection, onNavigate, variant }: AdminSec
           </button>
         );
       })}
-    </nav>
+    </div>
   );
 }
 
