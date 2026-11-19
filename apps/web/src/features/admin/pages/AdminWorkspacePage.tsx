@@ -7,6 +7,7 @@ import { EmployerManagementPage } from "./EmployerManagementPage";
 import { JobModerationPage } from "./JobModerationPage";
 import { ReportManagementPage } from "./ReportManagementPage";
 import { UserManagementPage } from "./UserManagementPage";
+import { applyReportStatusAction } from "../reports/reportActions";
 import type { AccountStatus, AdminActivity, AdminEmployer, AdminReport, AdminSection, AdminUser, ModerationJob, ModerationStatus, ReportStatus, VerificationStatus } from "../types";
 
 type AdminWorkspacePageProps = {
@@ -47,13 +48,13 @@ function AdminWorkspacePage({ loadError, loading = false }: AdminWorkspacePagePr
   }
 
   function updateReportStatus(report: AdminReport, status: ReportStatus, note: string) {
-    setReports((current) => current.map((item) => item.id === report.id ? {
-      ...item,
-      status,
-      history: [{ status, date: new Date().toISOString().slice(0, 10), note }, ...item.history],
-    } : item));
-    setNotice(`Report for ${report.targetLabel} marked ${status.toLowerCase()}.`);
+    const result = applyReportStatusAction(reports, report.id, status, note);
+    if (!result.ok) return result;
+
+    setReports(result.reports);
+    setNotice(`Preview only: report ${report.id} marked ${status.toLowerCase()}. This change is not saved to the server.`);
     addActivity(`Report ${status.toLowerCase()}`, report.targetLabel, status === "Resolved" ? "emerald" : status === "Dismissed" ? "rose" : "amber");
+    return result;
   }
 
   let section: ReactNode;

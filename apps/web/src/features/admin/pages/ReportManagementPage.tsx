@@ -7,12 +7,13 @@ import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { AdminActionDialog } from "../components/AdminActionDialog";
 import { filterAndSortReports, getReportDataState } from "../reports/reportAnalytics";
+import type { ReportActionResult } from "../reports/reportActions";
 import type { ReportFilterCriteria, ReportSortOrder } from "../reports/types";
 import type { AdminReport, ReportStatus, ReportTargetType } from "../types";
 
 type ReportManagementPageProps = {
   reports: AdminReport[];
-  onStatusChange: (report: AdminReport, status: ReportStatus, note: string) => void;
+  onStatusChange: (report: AdminReport, status: ReportStatus, note: string) => ReportActionResult;
 };
 
 function ReportManagementPage({ onStatusChange, reports }: ReportManagementPageProps) {
@@ -33,9 +34,10 @@ function ReportManagementPage({ onStatusChange, reports }: ReportManagementPageP
     setSortOrder("newest");
   }
 
-  function update(report: AdminReport, next: ReportStatus, note: string) {
-    onStatusChange(report, next, note);
-    setSelected(null);
+  function update(report: AdminReport, next: ReportStatus, note: string): ReportActionResult {
+    const result = onStatusChange(report, next, note);
+    if (result.ok) setSelected(result.report);
+    return result;
   }
 
   return (
@@ -97,8 +99,9 @@ function ReportRow({ report, onView }: { report: AdminReport; onView: () => void
   );
 }
 
-function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminReport; onClose: () => void; onUpdate: (status: ReportStatus, note: string) => void }) {
+function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminReport; onClose: () => void; onUpdate: (status: ReportStatus, note: string) => ReportActionResult }) {
   const [action, setAction] = useState<ReportStatus | null>(null);
+  const [actionError, setActionError] = useState("");
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-4" onClick={onClose}>
       <Modal onClose={onClose} aria-labelledby="report-detail-title" aria-modal="true" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
@@ -113,16 +116,22 @@ function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminRepor
         </div>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button onClick={onClose} variant="secondary">Close</Button>
-          {report.status === "Open" ? <Button onClick={() => setAction("Reviewing")} variant="primary">Mark reviewing</Button> : null}
-          {report.status === "Reviewing" ? <><Button onClick={() => setAction("Dismissed")} variant="ghost">Dismiss report</Button><Button onClick={() => setAction("Resolved")} variant="primary">Resolve report</Button></> : null}
+          {report.status === "Open" ? <Button onClick={() => { setActionError(""); setAction("Reviewing"); }} variant="primary">Mark reviewing</Button> : null}
+          {report.status === "Reviewing" ? <><Button onClick={() => { setActionError(""); setAction("Dismissed"); }} variant="ghost">Dismiss report</Button><Button onClick={() => { setActionError(""); setAction("Resolved"); }} variant="primary">Resolve report</Button></> : null}
         </div>
       </Modal>
       {action ? (
         <AdminActionDialog
           confirmLabel={action === "Reviewing" ? "Start review" : action === "Resolved" ? "Resolve report" : "Dismiss report"}
-          description={action === "Reviewing" ? "Record that a moderator has started reviewing this report." : `Close this case as ${action.toLowerCase()} and add a summary to its history.`}
+          description={`Report ${report.id} is currently ${report.status}. Change its status to ${action}? This updates the local preview only; it is not saved to the server.`}
+          feedbackMessage={actionError || undefined}
           onCancel={() => setAction(null)}
-          onConfirm={(note) => { onUpdate(action, note || "Moderator started review"); setAction(null); }}
+          onConfirm={(note) => {
+            const result = onUpdate(action, note);
+            if (result.ok) setAction(null);
+            else setActionError(result.message);
+          }}
+          processingLabel="Applying preview..."
           reasonLabel={action === "Reviewing" ? "Review note" : "Resolution note"}
           reasonPlaceholder="Summarize the decision or next step..."
           requireReason={action !== "Reviewing"}
