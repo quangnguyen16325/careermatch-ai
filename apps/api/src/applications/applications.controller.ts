@@ -29,6 +29,9 @@ import { QueryMyApplicationsDto } from './dto/query-applications.dto.js';
 import { QueryJobApplicationsDto } from './dto/query-job-applications.dto.js';
 import { ShortlistCandidateDto } from './dto/shortlist-candidate.dto.js';
 import { ReviewCandidateDto } from './dto/review-candidate.dto.js';
+import { AcceptApplicationDto } from './dto/accept-application.dto.js';
+import { RejectApplicationDto } from './dto/reject-application.dto.js';
+import { HiringOutcomeDto } from './dto/hiring-outcome.dto.js';
 
 @ApiTags('applications')
 @Controller('applications')
@@ -161,6 +164,72 @@ export class ApplicationsController {
     @Body() dto: ShortlistCandidateDto,
   ) {
     return this.applicationsService.shortlistApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer accept candidate application (hiring outcome: ACCEPTED)' })
+  @ApiResponse({ status: 200, description: 'Application accepted successfully' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or APPLICATION_TERMINAL_STATE' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  acceptApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AcceptApplicationDto,
+  ) {
+    return this.applicationsService.acceptApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer reject candidate application (hiring outcome: REJECTED)' })
+  @ApiResponse({ status: 200, description: 'Application rejected' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or APPLICATION_TERMINAL_STATE' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  rejectApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: RejectApplicationDto,
+  ) {
+    return this.applicationsService.rejectApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/outcome')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer update final hiring outcome (ACCEPTED / REJECTED)' })
+  @ApiResponse({ status: 200, description: 'Hiring outcome updated' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or APPLICATION_TERMINAL_STATE' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  updateHiringOutcome(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: HiringOutcomeDto,
+  ) {
+    return this.applicationsService.updateHiringOutcome(
       user.id,
       id,
       dto,

@@ -10,6 +10,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
   ApplicationStatus,
+  InterviewStatus,
   JobStatus,
   NotificationType,
   UserRole,
@@ -967,6 +968,374 @@ describe('ApplicationsService', () => {
       const result = await service.getApplicationById('admin-user-1', 'app-1', UserRole.ADMIN);
 
       expect(result).toBe(mockApp);
+    });
+  });
+
+  describe('acceptApplication', () => {
+    const mockInterviewingApp = {
+      id: 'app-1',
+      status: ApplicationStatus.INTERVIEW,
+      job: {
+        id: 'job-1',
+        title: 'Backend Engineer',
+        companyId: mockCompany.id,
+        company: mockCompany,
+      },
+      student: {
+        id: 'student-1',
+        userId: 'student-user-1',
+      },
+    };
+
+    it('throws NotFoundException if application not found', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.acceptApplication(mockEmployerUser.id, 'app-not-found'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException if employer from another company', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue({
+        ...mockInterviewingApp,
+        job: { ...mockInterviewingApp.job, companyId: 'other-comp' },
+      });
+
+      await expect(
+        service.acceptApplication(mockEmployerUser.id, 'app-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws BadRequestException (APPLICATION_TERMINAL_STATE) if already in terminal state', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue({
+        ...mockInterviewingApp,
+        status: ApplicationStatus.ACCEPTED,
+      });
+
+      await expect(
+        service.acceptApplication(mockEmployerUser.id, 'app-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException (INVALID_STATE_TRANSITION) if application is not in INTERVIEW stage', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue({
+        ...mockInterviewingApp,
+        status: ApplicationStatus.SHORTLISTED,
+      });
+
+      await expect(
+        service.acceptApplication(mockEmployerUser.id, 'app-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException if conditional update count is 0', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue(mockInterviewingApp);
+
+      const mockTx = {
+        application: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+      mockDb.client.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTx);
+      });
+
+      await expect(
+        service.acceptApplication(mockEmployerUser.id, 'app-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('successfully accepts candidate, completes pending interviews, notifies student, and logs audit', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue(mockInterviewingApp);
+
+      const acceptedApp = {
+        ...mockInterviewingApp,
+        status: ApplicationStatus.ACCEPTED,
+      };
+
+      const mockTx = {
+        application: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: vi.fn().mockResolvedValue(acceptedApp),
+        },
+        interview: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        applicationStatusHistory: {
+          create: vi.fn().mockResolvedValue({ id: 'hist-1' }),
+        },
+        notification: {
+          create: vi.fn().mockResolvedValue({ id: 'notif-1' }),
+        },
+        auditLog: {
+          create: vi.fn().mockResolvedValue({ id: 'audit-1' }),
+        },
+      };
+
+      mockDb.client.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTx);
+      });
+
+      const result = await service.acceptApplication(mockEmployerUser.id, 'app-1', {
+        note: 'Welcome to the team!',
+      });
+
+      expect(mockTx.application.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'app-1',
+          status: ApplicationStatus.INTERVIEW,
+        },
+        data: {
+          status: ApplicationStatus.ACCEPTED,
+          updatedAt: expect.any(Date),
+        },
+      });
+
+      expect(mockTx.interview.updateMany).toHaveBeenCalledWith({
+        where: {
+          applicationId: 'app-1',
+          status: { in: [InterviewStatus.PROPOSED, InterviewStatus.ACCEPTED] },
+        },
+        data: {
+          status: InterviewStatus.COMPLETED,
+          updatedAt: expect.any(Date),
+        },
+      });
+
+      expect(mockTx.applicationStatusHistory.create).toHaveBeenCalledWith({
+        data: {
+          applicationId: 'app-1',
+          fromStatus: ApplicationStatus.INTERVIEW,
+          toStatus: ApplicationStatus.ACCEPTED,
+          reason: 'Welcome to the team!',
+          changedById: mockEmployerUser.id,
+        },
+      });
+
+      expect(mockTx.notification.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'student-user-1',
+          type: NotificationType.APPLICATION_ACCEPTED,
+          title: 'Congratulations! Application Accepted',
+          body: `${mockCompany.name} has accepted your application for ${mockInterviewingApp.job.title}.`,
+          data: {
+            jobId: 'job-1',
+            applicationId: 'app-1',
+          },
+        },
+      });
+
+      expect(mockTx.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: mockEmployerUser.id,
+          action: 'APPLICATION_ACCEPTED',
+          entity: 'Application',
+          entityId: 'app-1',
+          metadata: {
+            previousStatus: ApplicationStatus.INTERVIEW,
+            newStatus: ApplicationStatus.ACCEPTED,
+            note: 'Welcome to the team!',
+          },
+        },
+      });
+
+      expect(result).toBe(acceptedApp);
+    });
+  });
+
+  describe('rejectApplication', () => {
+    const mockApp = {
+      id: 'app-1',
+      status: ApplicationStatus.SHORTLISTED,
+      job: {
+        id: 'job-1',
+        title: 'Backend Engineer',
+        companyId: mockCompany.id,
+        company: mockCompany,
+      },
+      student: {
+        id: 'student-1',
+        userId: 'student-user-1',
+      },
+    };
+
+    it('throws NotFoundException if application not found', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.rejectApplication(mockEmployerUser.id, 'app-not-found'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException if employer from another company', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue({
+        ...mockApp,
+        job: { ...mockApp.job, companyId: 'other-comp' },
+      });
+
+      await expect(
+        service.rejectApplication(mockEmployerUser.id, 'app-1'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws BadRequestException (APPLICATION_TERMINAL_STATE) if already in terminal state', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue({
+        ...mockApp,
+        status: ApplicationStatus.REJECTED,
+      });
+
+      await expect(
+        service.rejectApplication(mockEmployerUser.id, 'app-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('successfully rejects candidate, cancels pending interviews, notifies student, and logs audit', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(mockEmployerProfile);
+      mockDb.client.application.findUnique.mockResolvedValue(mockApp);
+
+      const rejectedApp = {
+        ...mockApp,
+        status: ApplicationStatus.REJECTED,
+      };
+
+      const mockTx = {
+        application: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: vi.fn().mockResolvedValue(rejectedApp),
+        },
+        interview: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        applicationStatusHistory: {
+          create: vi.fn().mockResolvedValue({ id: 'hist-1' }),
+        },
+        notification: {
+          create: vi.fn().mockResolvedValue({ id: 'notif-1' }),
+        },
+        auditLog: {
+          create: vi.fn().mockResolvedValue({ id: 'audit-1' }),
+        },
+      };
+
+      mockDb.client.$transaction.mockImplementation(async (callback) => {
+        return callback(mockTx);
+      });
+
+      const result = await service.rejectApplication(mockEmployerUser.id, 'app-1', {
+        reason: 'Selected candidate with higher cloud experience.',
+      });
+
+      expect(mockTx.application.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'app-1',
+          status: {
+            in: [
+              ApplicationStatus.SUBMITTED,
+              ApplicationStatus.REVIEWING,
+              ApplicationStatus.SHORTLISTED,
+              ApplicationStatus.INTERVIEW,
+            ],
+          },
+        },
+        data: {
+          status: ApplicationStatus.REJECTED,
+          updatedAt: expect.any(Date),
+        },
+      });
+
+      expect(mockTx.interview.updateMany).toHaveBeenCalledWith({
+        where: {
+          applicationId: 'app-1',
+          status: { in: [InterviewStatus.PROPOSED, InterviewStatus.ACCEPTED] },
+        },
+        data: {
+          status: InterviewStatus.CANCELLED,
+          notes: 'Cancelled due to candidate application rejection.',
+          updatedAt: expect.any(Date),
+        },
+      });
+
+      expect(mockTx.applicationStatusHistory.create).toHaveBeenCalledWith({
+        data: {
+          applicationId: 'app-1',
+          fromStatus: ApplicationStatus.SHORTLISTED,
+          toStatus: ApplicationStatus.REJECTED,
+          reason: 'Selected candidate with higher cloud experience.',
+          changedById: mockEmployerUser.id,
+        },
+      });
+
+      expect(mockTx.notification.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'student-user-1',
+          type: NotificationType.APPLICATION_REJECTED,
+          title: 'Application Update',
+          body: `Your application for ${mockApp.job.title} at ${mockCompany.name} was not selected.`,
+          data: {
+            jobId: 'job-1',
+            applicationId: 'app-1',
+          },
+        },
+      });
+
+      expect(mockTx.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: mockEmployerUser.id,
+          action: 'APPLICATION_REJECTED',
+          entity: 'Application',
+          entityId: 'app-1',
+          metadata: {
+            previousStatus: ApplicationStatus.SHORTLISTED,
+            newStatus: ApplicationStatus.REJECTED,
+            reason: 'Selected candidate with higher cloud experience.',
+          },
+        },
+      });
+
+      expect(result).toBe(rejectedApp);
+    });
+  });
+
+  describe('updateHiringOutcome', () => {
+    it('calls acceptApplication when outcome is ACCEPTED', async () => {
+      const spy = vi.spyOn(service, 'acceptApplication').mockResolvedValue({ id: 'app-1' } as any);
+
+      await service.updateHiringOutcome(mockEmployerUser.id, 'app-1', {
+        outcome: 'ACCEPTED',
+        note: 'Offer accepted',
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        mockEmployerUser.id,
+        'app-1',
+        { note: 'Offer accepted' },
+        UserRole.EMPLOYER,
+      );
+    });
+
+    it('calls rejectApplication when outcome is REJECTED', async () => {
+      const spy = vi.spyOn(service, 'rejectApplication').mockResolvedValue({ id: 'app-1' } as any);
+
+      await service.updateHiringOutcome(mockEmployerUser.id, 'app-1', {
+        outcome: 'REJECTED',
+        reason: 'Not selected',
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        mockEmployerUser.id,
+        'app-1',
+        { reason: 'Not selected' },
+        UserRole.EMPLOYER,
+      );
     });
   });
 });

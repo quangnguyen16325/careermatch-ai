@@ -9,6 +9,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
   ApplicationStatus,
+  InterviewStatus,
   JobStatus,
   NotificationType,
   UserRole,
@@ -20,6 +21,9 @@ import { QueryMyApplicationsDto } from './dto/query-applications.dto.js';
 import { QueryJobApplicationsDto } from './dto/query-job-applications.dto.js';
 import { ShortlistCandidateDto } from './dto/shortlist-candidate.dto.js';
 import { ReviewCandidateDto } from './dto/review-candidate.dto.js';
+import { AcceptApplicationDto } from './dto/accept-application.dto.js';
+import { RejectApplicationDto } from './dto/reject-application.dto.js';
+import { HiringOutcomeDto } from './dto/hiring-outcome.dto.js';
 
 @Injectable()
 export class ApplicationsService {
@@ -862,5 +866,376 @@ export class ApplicationsService {
         },
       });
     });
+  }
+
+  async acceptApplication(
+    employerUserId: string,
+    applicationId: string,
+    dto?: AcceptApplicationDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    let employerCompanyId: string | undefined;
+    if (userRole === UserRole.EMPLOYER) {
+      const employer = await this.getEmployerProfile(employerUserId);
+      employerCompanyId = employer.companyId!;
+    }
+
+    const application = await this.db.client.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        job: {
+          include: {
+            company: {
+              include: {
+                employers: { select: { userId: true } },
+              },
+            },
+          },
+        },
+        student: {
+          include: {
+            user: { select: { id: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException({
+        code: 'APPLICATION_NOT_FOUND',
+        message: 'Application not found',
+      });
+    }
+
+    if (
+      userRole === UserRole.EMPLOYER &&
+      application.job.companyId !== employerCompanyId
+    ) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to make hiring decisions for this application',
+      });
+    }
+
+    if (
+      application.status === ApplicationStatus.ACCEPTED ||
+      application.status === ApplicationStatus.REJECTED ||
+      application.status === ApplicationStatus.WITHDRAWN
+    ) {
+      throw new BadRequestException({
+        code: 'APPLICATION_TERMINAL_STATE',
+        message:
+          'Application is already in a terminal state (ACCEPTED, REJECTED, or WITHDRAWN)',
+      });
+    }
+
+    const isValidTransition = canTransitionApplication(
+      application.status,
+      ApplicationStatus.ACCEPTED,
+      userRole,
+    );
+
+    if (!isValidTransition) {
+      throw new BadRequestException({
+        code: 'INVALID_STATE_TRANSITION',
+        message: `Cannot accept application from ${application.status} status. Candidate must be in INTERVIEW stage.`,
+      });
+    }
+
+    return this.db.client.$transaction(async (tx) => {
+      const updateResult = await tx.application.updateMany({
+        where: {
+          id: applicationId,
+          status: ApplicationStatus.INTERVIEW,
+        },
+        data: {
+          status: ApplicationStatus.ACCEPTED,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Application status has changed or cannot be accepted',
+        });
+      }
+
+      // Mark any remaining pending/accepted interviews as completed
+      await tx.interview.updateMany({
+        where: {
+          applicationId,
+          status: {
+            in: [InterviewStatus.PROPOSED, InterviewStatus.ACCEPTED],
+          },
+        },
+        data: {
+          status: InterviewStatus.COMPLETED,
+          updatedAt: new Date(),
+        },
+      });
+
+      const reason =
+        dto?.note ?? 'Candidate officially accepted for the position.';
+
+      await tx.applicationStatusHistory.create({
+        data: {
+          applicationId,
+          fromStatus: application.status,
+          toStatus: ApplicationStatus.ACCEPTED,
+          reason,
+          changedById: employerUserId,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: application.student.userId,
+          type: NotificationType.APPLICATION_ACCEPTED,
+          title: 'Congratulations! Application Accepted',
+          body: `${application.job.company.name} has accepted your application for ${application.job.title}.`,
+          data: {
+            jobId: application.job.id,
+            applicationId: application.id,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: employerUserId,
+          action: 'APPLICATION_ACCEPTED',
+          entity: 'Application',
+          entityId: applicationId,
+          metadata: {
+            previousStatus: application.status,
+            newStatus: ApplicationStatus.ACCEPTED,
+            note: dto?.note ?? null,
+          },
+        },
+      });
+
+      return tx.application.findUniqueOrThrow({
+        where: { id: applicationId },
+        include: {
+          job: {
+            include: {
+              company: true,
+              category: true,
+              skills: { include: { skill: true } },
+            },
+          },
+          student: true,
+          history: {
+            orderBy: { createdAt: 'desc' },
+          },
+          interviews: {
+            orderBy: { scheduledAt: 'desc' },
+          },
+        },
+      });
+    });
+  }
+
+  async rejectApplication(
+    employerUserId: string,
+    applicationId: string,
+    dto?: RejectApplicationDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    let employerCompanyId: string | undefined;
+    if (userRole === UserRole.EMPLOYER) {
+      const employer = await this.getEmployerProfile(employerUserId);
+      employerCompanyId = employer.companyId!;
+    }
+
+    const application = await this.db.client.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        job: {
+          include: {
+            company: {
+              include: {
+                employers: { select: { userId: true } },
+              },
+            },
+          },
+        },
+        student: {
+          include: {
+            user: { select: { id: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException({
+        code: 'APPLICATION_NOT_FOUND',
+        message: 'Application not found',
+      });
+    }
+
+    if (
+      userRole === UserRole.EMPLOYER &&
+      application.job.companyId !== employerCompanyId
+    ) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to make hiring decisions for this application',
+      });
+    }
+
+    if (
+      application.status === ApplicationStatus.ACCEPTED ||
+      application.status === ApplicationStatus.REJECTED ||
+      application.status === ApplicationStatus.WITHDRAWN
+    ) {
+      throw new BadRequestException({
+        code: 'APPLICATION_TERMINAL_STATE',
+        message:
+          'Application is already in a terminal state (ACCEPTED, REJECTED, or WITHDRAWN)',
+      });
+    }
+
+    const isValidTransition = canTransitionApplication(
+      application.status,
+      ApplicationStatus.REJECTED,
+      userRole,
+    );
+
+    if (!isValidTransition) {
+      throw new BadRequestException({
+        code: 'INVALID_STATE_TRANSITION',
+        message: `Cannot reject application from ${application.status} status`,
+      });
+    }
+
+    return this.db.client.$transaction(async (tx) => {
+      const updateResult = await tx.application.updateMany({
+        where: {
+          id: applicationId,
+          status: {
+            in: [
+              ApplicationStatus.SUBMITTED,
+              ApplicationStatus.REVIEWING,
+              ApplicationStatus.SHORTLISTED,
+              ApplicationStatus.INTERVIEW,
+            ],
+          },
+        },
+        data: {
+          status: ApplicationStatus.REJECTED,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Application status has changed or cannot be rejected',
+        });
+      }
+
+      // If any scheduled/proposed interviews exist, cancel them
+      await tx.interview.updateMany({
+        where: {
+          applicationId,
+          status: {
+            in: [InterviewStatus.PROPOSED, InterviewStatus.ACCEPTED],
+          },
+        },
+        data: {
+          status: InterviewStatus.CANCELLED,
+          notes: 'Cancelled due to candidate application rejection.',
+          updatedAt: new Date(),
+        },
+      });
+
+      const reason =
+        dto?.reason ??
+        dto?.feedback ??
+        'Candidate application was not selected for this position.';
+
+      await tx.applicationStatusHistory.create({
+        data: {
+          applicationId,
+          fromStatus: application.status,
+          toStatus: ApplicationStatus.REJECTED,
+          reason,
+          changedById: employerUserId,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: application.student.userId,
+          type: NotificationType.APPLICATION_REJECTED,
+          title: 'Application Update',
+          body: `Your application for ${application.job.title} at ${application.job.company.name} was not selected.`,
+          data: {
+            jobId: application.job.id,
+            applicationId: application.id,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: employerUserId,
+          action: 'APPLICATION_REJECTED',
+          entity: 'Application',
+          entityId: applicationId,
+          metadata: {
+            previousStatus: application.status,
+            newStatus: ApplicationStatus.REJECTED,
+            reason,
+          },
+        },
+      });
+
+      return tx.application.findUniqueOrThrow({
+        where: { id: applicationId },
+        include: {
+          job: {
+            include: {
+              company: true,
+              category: true,
+              skills: { include: { skill: true } },
+            },
+          },
+          student: true,
+          history: {
+            orderBy: { createdAt: 'desc' },
+          },
+          interviews: {
+            orderBy: { scheduledAt: 'desc' },
+          },
+        },
+      });
+    });
+  }
+
+  async updateHiringOutcome(
+    employerUserId: string,
+    applicationId: string,
+    dto: HiringOutcomeDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    if (dto.outcome === 'ACCEPTED') {
+      return this.acceptApplication(
+        employerUserId,
+        applicationId,
+        { note: dto.note ?? dto.reason },
+        userRole,
+      );
+    }
+
+    return this.rejectApplication(
+      employerUserId,
+      applicationId,
+      { reason: dto.reason ?? dto.note },
+      userRole,
+    );
   }
 }

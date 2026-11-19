@@ -14,6 +14,9 @@ describe('ApplicationsController', () => {
     getEmployerApplications: ReturnType<typeof vi.fn>;
     reviewApplication: ReturnType<typeof vi.fn>;
     shortlistApplication: ReturnType<typeof vi.fn>;
+    acceptApplication: ReturnType<typeof vi.fn>;
+    rejectApplication: ReturnType<typeof vi.fn>;
+    updateHiringOutcome: ReturnType<typeof vi.fn>;
   };
 
   const mockStudent = {
@@ -39,6 +42,9 @@ describe('ApplicationsController', () => {
       getEmployerApplications: vi.fn(),
       reviewApplication: vi.fn(),
       shortlistApplication: vi.fn(),
+      acceptApplication: vi.fn(),
+      rejectApplication: vi.fn(),
+      updateHiringOutcome: vi.fn(),
     };
 
     controller = new ApplicationsController(
@@ -167,6 +173,60 @@ describe('ApplicationsController', () => {
       const result = await controller.shortlistApplication(mockEmployer, 'app-1', dto);
 
       expect(service.shortlistApplication).toHaveBeenCalledWith(
+        mockEmployer.id,
+        'app-1',
+        dto,
+        mockEmployer.role,
+      );
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('acceptApplication', () => {
+    it('delegates to service.acceptApplication', async () => {
+      const mockResult = { id: 'app-1', status: ApplicationStatus.ACCEPTED };
+      service.acceptApplication.mockResolvedValue(mockResult);
+
+      const dto = { note: 'Extending offer' };
+      const result = await controller.acceptApplication(mockEmployer, 'app-1', dto);
+
+      expect(service.acceptApplication).toHaveBeenCalledWith(
+        mockEmployer.id,
+        'app-1',
+        dto,
+        mockEmployer.role,
+      );
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('rejectApplication', () => {
+    it('delegates to service.rejectApplication', async () => {
+      const mockResult = { id: 'app-1', status: ApplicationStatus.REJECTED };
+      service.rejectApplication.mockResolvedValue(mockResult);
+
+      const dto = { reason: 'Position filled' };
+      const result = await controller.rejectApplication(mockEmployer, 'app-1', dto);
+
+      expect(service.rejectApplication).toHaveBeenCalledWith(
+        mockEmployer.id,
+        'app-1',
+        dto,
+        mockEmployer.role,
+      );
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('updateHiringOutcome', () => {
+    it('delegates to service.updateHiringOutcome', async () => {
+      const mockResult = { id: 'app-1', status: ApplicationStatus.ACCEPTED };
+      service.updateHiringOutcome.mockResolvedValue(mockResult);
+
+      const dto = { outcome: 'ACCEPTED' as const, note: 'Hired!' };
+      const result = await controller.updateHiringOutcome(mockEmployer, 'app-1', dto);
+
+      expect(service.updateHiringOutcome).toHaveBeenCalledWith(
         mockEmployer.id,
         'app-1',
         dto,
