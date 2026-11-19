@@ -8,6 +8,7 @@ import { JobModerationPage } from "./JobModerationPage";
 import { ReportManagementPage } from "./ReportManagementPage";
 import { UserManagementPage } from "./UserManagementPage";
 import { applyReportStatusAction } from "../reports/reportActions";
+import { getReportDataState } from "../reports/reportAnalytics";
 import type { AccountStatus, AdminActivity, AdminEmployer, AdminReport, AdminSection, AdminUser, ModerationJob, ModerationStatus, ReportStatus, VerificationStatus } from "../types";
 
 type AdminWorkspacePageProps = {
@@ -72,7 +73,7 @@ function AdminWorkspacePage({ loadError, loading = false }: AdminWorkspacePagePr
       section = <ReportManagementPage onStatusChange={updateReportStatus} reports={reports} />;
       break;
     default:
-      section = <AdminDashboard activities={activities} employers={employers} jobs={jobs} onNavigate={setActiveSection} reports={reports} users={users} />;
+      section = <AdminDashboard activities={activities} employers={employers} jobs={jobs} onNavigate={setActiveSection} reportDataState={getReportDataState(reports, { error: loadError, loading })} reports={reports} users={users} />;
   }
 
   return (

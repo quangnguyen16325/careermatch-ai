@@ -44,7 +44,7 @@ function applyReportStatusAction(
         date: handledAt,
         note: `Status changed from ${currentReport.status} to ${nextStatus}.${cleanedNote ? ` ${cleanedNote}` : ""}`,
       },
-      ...currentReport.history,
+      ...(Array.isArray(currentReport.history) ? currentReport.history : []),
     ],
   };
 

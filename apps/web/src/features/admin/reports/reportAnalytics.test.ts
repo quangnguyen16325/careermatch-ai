@@ -35,6 +35,10 @@ describe("normalizeReportSearchTerm and filterAndSortReports", () => {
     expect(filterAndSortReports(null, { query: "no match" })).toEqual([]);
   });
 
+  it("skips malformed null rows instead of throwing", () => {
+    expect(filterAndSortReports([null as unknown as AdminReport, reports[0]])).toEqual([reports[0]]);
+  });
+
   it("sorts in either date direction without mutating source order and keeps invalid dates last", () => {
     const withInvalidDate = [
       reports[0],

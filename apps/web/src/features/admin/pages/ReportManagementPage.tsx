@@ -6,7 +6,7 @@ import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { AdminActionDialog } from "../components/AdminActionDialog";
-import { filterAndSortReports, getReportDataState } from "../reports/reportAnalytics";
+import { buildReportAnalytics, filterAndSortReports, getReportDataState } from "../reports/reportAnalytics";
 import type { ReportActionResult } from "../reports/reportActions";
 import type { ReportFilterCriteria, ReportSortOrder } from "../reports/types";
 import type { AdminReport, ReportStatus, ReportTargetType } from "../types";
@@ -21,10 +21,12 @@ function ReportManagementPage({ onStatusChange, reports }: ReportManagementPageP
   const [status, setStatus] = useState<ReportStatus | "All statuses">("All statuses");
   const [targetType, setTargetType] = useState<ReportTargetType | "All types">("All types");
   const [sortOrder, setSortOrder] = useState<ReportSortOrder>("newest");
-  const [selected, setSelected] = useState<AdminReport | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = selectedId ? reports.find((report) => report && report.id === selectedId) ?? null : null;
 
   const filtered = useMemo(() => filterAndSortReports(reports, { query, status, targetType, sortOrder } satisfies ReportFilterCriteria), [query, reports, sortOrder, status, targetType]);
   const dataState = getReportDataState(reports);
+  const analytics = buildReportAnalytics(reports);
   const hasFilters = Boolean(query.trim()) || status !== "All statuses" || targetType !== "All types";
 
   function resetFilters() {
@@ -35,21 +37,20 @@ function ReportManagementPage({ onStatusChange, reports }: ReportManagementPageP
   }
 
   function update(report: AdminReport, next: ReportStatus, note: string): ReportActionResult {
-    const result = onStatusChange(report, next, note);
-    if (result.ok) setSelected(result.report);
-    return result;
+    return onStatusChange(report, next, note);
   }
 
   return (
     <div className="space-y-6">
       <PageHeader description="Review community reports. This workspace currently displays local preview data." eyebrow="Trust and safety · Preview data" title="Reports" />
+      {selectedId && !selected ? <div aria-live="assertive" className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between" role="alert"><p>Report {selectedId} is no longer available. The preview was not changed.</p><Button onClick={() => setSelectedId(null)} size="sm" variant="secondary">Dismiss</Button></div> : null}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MiniStat label="Open" value={reports.filter((report) => report.status === "Open").length} />
-        <MiniStat label="Reviewing" value={reports.filter((report) => report.status === "Reviewing").length} />
-        <MiniStat label="Resolved" value={reports.filter((report) => report.status === "Resolved").length} />
-        <MiniStat label="Dismissed" value={reports.filter((report) => report.status === "Dismissed").length} />
+        <MiniStat label="Open" value={analytics.statusCounts.Open} />
+        <MiniStat label="Reviewing" value={analytics.statusCounts.Reviewing} />
+        <MiniStat label="Resolved" value={analytics.statusCounts.Resolved} />
+        <MiniStat label="Dismissed" value={analytics.statusCounts.Dismissed} />
       </div>
-      <Card as="div" padding="sm" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(9rem,0.55fr))_auto]">
+      <Card as="div" padding="sm" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_repeat(3,minmax(8rem,0.55fr))_auto]">
         <label className="relative block min-w-0"><span className="sr-only">Search reports</span><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setQuery(event.target.value)} placeholder="Search reports" type="search" value={query} /></label>
         <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Status</span><select className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setStatus(event.target.value as ReportStatus | "All statuses")} value={status}>{(["All statuses", "Open", "Reviewing", "Resolved", "Dismissed"] as const).map((item) => <option key={item}>{item}</option>)}</select></label>
         <label className="block"><span className="mb-1 block text-xs font-medium text-slate-600">Report type</span><select className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setTargetType(event.target.value as ReportTargetType | "All types")} value={targetType}>{(["All types", "Job", "Account"] as const).map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -57,9 +58,9 @@ function ReportManagementPage({ onStatusChange, reports }: ReportManagementPageP
         <div className="flex items-end"><Button className="w-full sm:w-auto" disabled={!hasFilters && sortOrder === "newest"} icon={<X size={16} aria-hidden="true" />} onClick={resetFilters} variant="secondary">Reset filters</Button></div>
       </Card>
       <div aria-live="polite" role="status"><h2 className="font-semibold text-slate-950">Community reports</h2><p className="mt-1 text-sm text-slate-500">Showing {filtered.length} of {reports.length} reports</p></div>
-      {dataState.status === "empty" ? <EmptyReports /> : filtered.length ? <ReportResults onView={setSelected} reports={filtered} /> : <Card className="py-12 text-center"><Flag className="mx-auto size-10 text-slate-400" aria-hidden="true" /><h3 className="mt-4 text-lg font-semibold text-slate-950">No matching reports</h3><p className="mt-2 text-sm text-slate-600">Adjust or reset the search and filters to see reports.</p><Button className="mt-4" disabled={!hasFilters && sortOrder === "newest"} onClick={resetFilters} variant="secondary">Reset filters</Button></Card>}
+      {dataState.status === "empty" ? <EmptyReports /> : filtered.length ? <ReportResults onView={(report) => setSelectedId(report.id)} reports={filtered} /> : <Card className="py-12 text-center"><Flag className="mx-auto size-10 text-slate-400" aria-hidden="true" /><h3 className="mt-4 text-lg font-semibold text-slate-950">No matching reports</h3><p className="mt-2 text-sm text-slate-600">Adjust or reset the search and filters to see reports.</p><Button className="mt-4" disabled={!hasFilters && sortOrder === "newest"} onClick={resetFilters} variant="secondary">Reset filters</Button></Card>}
 
-      {selected ? <ReportDetailsDialog onClose={() => setSelected(null)} onUpdate={(next, note) => update(selected, next, note)} report={selected} /> : null}
+      {selected ? <ReportDetailsDialog onClose={() => setSelectedId(null)} onUpdate={(next, note) => update(selected, next, note)} report={selected} /> : null}
     </div>
   );
 }
@@ -102,9 +103,10 @@ function ReportRow({ report, onView }: { report: AdminReport; onView: () => void
 function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminReport; onClose: () => void; onUpdate: (status: ReportStatus, note: string) => ReportActionResult }) {
   const [action, setAction] = useState<ReportStatus | null>(null);
   const [actionError, setActionError] = useState("");
+  const history = Array.isArray(report.history) ? report.history.filter((entry) => entry && typeof entry === "object") : [];
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 sm:items-center sm:p-4" onClick={onClose}>
-      <Modal onClose={onClose} aria-labelledby="report-detail-title" aria-modal="true" className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
+      <Modal onClose={onClose} aria-labelledby="report-detail-title" aria-modal="true" className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" onClick={(event) => event.stopPropagation()} role="dialog">
         <div className="flex flex-wrap items-center gap-2"><ReportStatusBadge status={report.status} /><span className="text-xs text-slate-500">Report {report.id} · Submitted {formatDate(report.submittedAt)}</span></div>
         <h2 className="mt-3 text-xl font-semibold text-slate-950" id="report-detail-title">{report.targetLabel}</h2>
         <p className="mt-1 text-sm text-slate-600">{report.targetType} report · {report.reason}</p>
@@ -112,7 +114,7 @@ function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminRepor
         <div className="mt-5"><h3 className="text-sm font-semibold text-slate-900">Report details</h3><p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600">{report.details}</p></div>
         <div className="mt-6 border-t border-slate-100 pt-5">
           <h3 className="text-sm font-semibold text-slate-900">Handling history</h3>
-          <ol className="mt-3 space-y-3">{report.history.map((entry, index) => <li className="flex gap-3" key={`${entry.status}-${entry.date}-${index}`}><span className="mt-1.5 size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" /><div><p className="text-sm font-medium text-slate-800">{entry.status} <span className="font-normal text-slate-400">· {formatDate(entry.date)}</span></p><p className="mt-0.5 text-xs text-slate-600">{entry.note}</p></div></li>)}</ol>
+          {history.length ? <ol className="mt-3 space-y-3">{history.map((entry, index) => <li className="flex gap-3" key={`${entry.status}-${entry.date}-${index}`}><span className="mt-1.5 size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" /><div><p className="text-sm font-medium text-slate-800">{entry.status} <span className="font-normal text-slate-400">· {formatDate(entry.date)}</span></p><p className="mt-0.5 text-xs text-slate-600">{entry.note}</p></div></li>)}</ol> : <p className="mt-3 text-sm text-slate-500">No handling history is available.</p>}
         </div>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button onClick={onClose} variant="secondary">Close</Button>
@@ -146,6 +148,6 @@ function ReportDetailsDialog({ report, onClose, onUpdate }: { report: AdminRepor
 function Detail({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-800">{value}</p></div>; }
 function MiniStat({ label, value }: { label: ReportStatus; value: number }) { return <Card padding="sm"><ReportStatusBadge status={label} /><p className="mt-3 text-2xl font-semibold tabular-nums text-slate-950">{value}</p></Card>; }
 function ReportStatusBadge({ status }: { status: ReportStatus }) { const tone: StatusTone = status === "Open" ? "warning" : status === "Reviewing" ? "info" : status === "Resolved" ? "success" : "neutral"; return <StatusBadge tone={tone}>{status}</StatusBadge>; }
-function formatDate(value: string) { return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
+function formatDate(value: string) { if (typeof value !== "string") return "Date unavailable"; const timestamp = Date.parse(value.length === 10 ? `${value}T00:00:00Z` : value); return Number.isFinite(timestamp) ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(timestamp) : "Date unavailable"; }
 
 export { ReportManagementPage };

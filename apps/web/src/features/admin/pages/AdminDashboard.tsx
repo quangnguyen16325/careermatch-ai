@@ -18,7 +18,7 @@ type AdminDashboardProps = {
 
 function AdminDashboard({ activities, employers, jobs, onNavigate, reportDataState, reports, users }: AdminDashboardProps) {
   const pendingJobs = jobs.filter((job) => job.status === "Pending").length;
-  const reportedJobs = reports.filter((report) => report.targetType === "Job" && report.status !== "Resolved" && report.status !== "Dismissed").length;
+  const reportedJobs = reports.filter((report) => report && report.targetType === "Job" && report.status !== "Resolved" && report.status !== "Dismissed").length;
   const pendingEmployers = employers.filter((employer) => employer.status === "Pending").length;
   const students = users.filter((user) => user.role === "Student").length;
   const adminUsers = users.filter((user) => user.role === "Admin").length;
@@ -213,6 +213,6 @@ function StatusCount({ label, count, tone }: { label: string; count: number; ton
 }
 
 function initials(value: string) { return value.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase(); }
-function formatDate(value: string) { return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
+function formatDate(value: string) { if (typeof value !== "string") return "Date unavailable"; const timestamp = Date.parse(value.length === 10 ? `${value}T00:00:00Z` : value); return Number.isFinite(timestamp) ? new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(timestamp) : "Date unavailable"; }
 
 export { AdminDashboard };

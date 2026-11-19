@@ -5,7 +5,7 @@ const reportStatuses: readonly ReportStatus[] = ["Open", "Reviewing", "Resolved"
 const reportTargetTypes: readonly ReportTargetType[] = ["Job", "Account"];
 
 function normalizeReportSearchTerm(value: string | null | undefined) {
-  return (value ?? "").normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+  return (typeof value === "string" ? value : "").normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function filterAndSortReports(
@@ -14,6 +14,7 @@ function filterAndSortReports(
 ): AdminReport[] {
   const query = normalizeReportSearchTerm(criteria.query);
   const filtered = (reports ?? []).filter((report) => {
+    if (!report || typeof report !== "object") return false;
     const searchableText = [
       report.reporter,
       report.reporterEmail,
@@ -84,13 +85,13 @@ function getReportDataState(
 }
 
 function parseReportDate(value: string | null | undefined): number | null {
-  if (!value?.trim()) return null;
+  if (typeof value !== "string" || !value.trim()) return null;
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
 function normalizeReportDateKey(value: string | null | undefined): string | null {
-  const date = value?.slice(0, 10) ?? "";
+  const date = typeof value === "string" ? value.slice(0, 10) : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const timestamp = Date.parse(`${date}T00:00:00Z`);
   if (Number.isNaN(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== date) return null;
