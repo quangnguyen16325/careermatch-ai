@@ -7,6 +7,8 @@ import { EmployerManagementPage } from "./EmployerManagementPage";
 import { JobModerationPage } from "./JobModerationPage";
 import { ReportManagementPage } from "./ReportManagementPage";
 import { UserManagementPage } from "./UserManagementPage";
+import { applyAccountOperationResult } from "../accounts/accountManagement";
+import type { AccountOperationResult } from "../accounts/types";
 import type { AccountStatus, AdminActivity, AdminEmployer, AdminReport, AdminSection, AdminUser, ModerationJob, ModerationStatus, ReportStatus, VerificationStatus } from "../types";
 
 type AdminWorkspacePageProps = {
@@ -28,10 +30,12 @@ function AdminWorkspacePage({ loadError, loading = false }: AdminWorkspacePagePr
     setActivities((current) => [{ id: `activity-${Date.now()}`, title, detail, date, tone }, ...current]);
   }
 
-  function updateUserStatus(user: AdminUser, status: AccountStatus) {
-    setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status } : item));
-    setNotice(`${user.name}'s account is now ${status.toLowerCase()}.`);
-    addActivity(`Account ${status.toLowerCase()}`, user.name, status === "Suspended" ? "rose" : "emerald");
+  function updateUserStatus(user: AdminUser, status: AccountStatus, reason: string): AccountOperationResult {
+    const result: AccountOperationResult = { success: true, accountId: user.id, status };
+    setUsers((current) => applyAccountOperationResult(current, result));
+    setNotice("");
+    addActivity(`Demo account ${status.toLowerCase()}`, `${user.name} — ${reason}`, status === "Suspended" ? "rose" : "emerald");
+    return result;
   }
 
   function updateEmployerStatus(employer: AdminEmployer, status: VerificationStatus, reason = "") {

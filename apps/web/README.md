@@ -51,3 +51,13 @@ On Windows, use `pnpm.cmd` as the command prefix. Tests use Vitest. There is cur
 ## Data and integration status
 
 Employer, candidate, and admin business screens use local mock data and frontend state. Their business actions are not persisted to backend APIs. The protected workspace shell does call the authentication API endpoints described above. There is no login UI or browser end-to-end coverage yet. The workspace session request verifies identity for presentation; server-side authorization remains mandatory for protected data and actions.
+
+## Admin account management
+
+Open `/admin.html` and select **Users** to view the mock account list. Search matches account names and email addresses without case sensitivity. Role and account-status filters can be combined with the search, and **Reset filters** clears all criteria.
+
+Active accounts offer **Lock** and suspended accounts offer **Unlock**. Pending accounts cannot use either action. Both actions require a reason; whitespace is trimmed and an empty reason is rejected. The dialog identifies the account and shows validation or operation errors beside the reason field. Successful actions display a status announcement and add an item to the local admin activity list.
+
+These actions only update in-memory demo state. The success message explicitly says that no real account was changed, and a page reload restores the mock data. There is currently no account lock/unlock API endpoint or agreed API contract. The frontend can map operation errors such as `401` (session expired), `403` (insufficient permission), validation errors, and service failures if a future caller supplies them, but the demo action does not make an account API request; real authorization and these server responses are not verified here.
+
+Unit tests cover account search and filters, action-reason validation, permitted account states, demo success messages, operation error mapping, and leaving the account list unchanged for a failed result. Browser-based responsive, keyboard, and screen-reader behavior has not been verified because this frontend does not currently include a browser E2E or DOM component-test runner.
