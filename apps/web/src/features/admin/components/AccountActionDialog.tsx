@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { Button } from "../../../components/ui/Button";
 import { Modal } from "../../../components/ui/Modal";
-import { canPerformAccountAction, validateAccountActionReason } from "../accounts/accountManagement";
-import type { AccountAction } from "../accounts/types";
+import {
+  canPerformAccountAction,
+  getAccountOperationErrorMessage,
+  normalizeAccountOperationError,
+  validateAccountActionReason,
+} from "../accounts/accountManagement";
+import type { AccountAction, AccountOperationResult } from "../accounts/types";
 import type { AdminUser } from "../types";
 
 type AccountActionDialogProps = {
   action: AccountAction;
   user: AdminUser;
   onCancel: () => void;
-  onConfirm: (reason: string) => void | Promise<void>;
+  onConfirm: (reason: string) => void | AccountOperationResult | Promise<void | AccountOperationResult>;
 };
 
 function AccountActionDialog({ action, onCancel, onConfirm, user }: AccountActionDialogProps) {
@@ -34,9 +39,13 @@ function AccountActionDialog({ action, onCancel, onConfirm, user }: AccountActio
     setSubmitting(true);
     setError("");
     try {
-      await onConfirm(validation.value);
-    } catch {
-      setError("The demo action could not be applied. The account list was not updated.");
+      const result = await onConfirm(validation.value);
+      if (result && !result.success) {
+        setError(getAccountOperationErrorMessage(result.error.kind));
+        setSubmitting(false);
+      }
+    } catch (error) {
+      setError(getAccountOperationErrorMessage(normalizeAccountOperationError(error).kind));
       setSubmitting(false);
     }
   }

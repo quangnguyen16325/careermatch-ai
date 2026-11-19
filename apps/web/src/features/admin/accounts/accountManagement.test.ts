@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { AdminUser } from "../types";
 import {
   canPerformAccountAction,
+  applyAccountOperationResult,
   filterAccounts,
+  getDemoAccountActionSuccessMessage,
   getAccountOperationErrorMessage,
   normalizeAccountOperationError,
   normalizeAccountSearchKeyword,
@@ -60,6 +62,26 @@ describe("canPerformAccountAction", () => {
   });
 });
 
+describe("account action feedback and results", () => {
+  it("uses an explicit demo-only success message for each action", () => {
+    expect(getDemoAccountActionSuccessMessage("lock", "Avery Nguyen")).toContain("locked in this preview only");
+    expect(getDemoAccountActionSuccessMessage("unlock", "Jordan Tran")).toContain("unlocked in this preview only");
+    expect(getDemoAccountActionSuccessMessage("lock", "Avery Nguyen")).toContain("No real account was changed");
+  });
+
+  it("keeps the account list unchanged when an operation fails", () => {
+    const failure = { success: false as const, error: { kind: "forbidden" as const } };
+    expect(applyAccountOperationResult(accounts, failure)).toBe(accounts);
+  });
+
+  it("updates only the target account for a successful operation", () => {
+    const updated = applyAccountOperationResult(accounts, { success: true, accountId: "account-1", status: "Suspended" });
+    expect(updated).not.toBe(accounts);
+    expect(updated[0].status).toBe("Suspended");
+    expect(updated[1]).toBe(accounts[1]);
+  });
+});
+
 describe("normalizeAccountOperationError", () => {
   it.each([
     [{ status: 401 }, "unauthenticated"],
@@ -75,5 +97,9 @@ describe("normalizeAccountOperationError", () => {
 
   it("provides user-facing text for authorization failures", () => {
     expect(getAccountOperationErrorMessage("forbidden")).toContain("do not have permission");
+    expect(getAccountOperationErrorMessage("unauthenticated")).toContain("session has expired");
+    expect(getAccountOperationErrorMessage("invalid_request")).toContain("reason");
+    expect(getAccountOperationErrorMessage("unavailable")).toContain("temporarily unavailable");
+    expect(getAccountOperationErrorMessage("unknown")).toContain("could not complete");
   });
 });

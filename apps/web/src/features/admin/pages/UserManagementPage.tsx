@@ -6,13 +6,13 @@ import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { AccountActionDialog } from "../components/AccountActionDialog";
-import { canPerformAccountAction, filterAccounts } from "../accounts/accountManagement";
-import type { AccountAction } from "../accounts/types";
+import { canPerformAccountAction, filterAccounts, getDemoAccountActionSuccessMessage } from "../accounts/accountManagement";
+import type { AccountAction, AccountOperationResult } from "../accounts/types";
 import type { AccountStatus, AdminRole, AdminUser } from "../types";
 
 type UserManagementPageProps = {
   users: AdminUser[];
-  onStatusChange: (user: AdminUser, status: AccountStatus, reason: string) => void | Promise<void>;
+  onStatusChange: (user: AdminUser, status: AccountStatus, reason: string) => void | AccountOperationResult | Promise<void | AccountOperationResult>;
 };
 
 function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) {
@@ -37,16 +37,19 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
     setAnnouncement(`Filters cleared. Showing all ${users.length} ${users.length === 1 ? "account" : "accounts"}.`);
   }
 
-  async function changeStatus(user: AdminUser, selectedAction: AccountAction, reason: string) {
+  async function changeStatus(user: AdminUser, selectedAction: AccountAction, reason: string): Promise<void | AccountOperationResult> {
     const currentUser = users.find((account) => account.id === user.id);
     if (!currentUser || !canPerformAccountAction(currentUser.status, selectedAction)) {
       throw new Error("The account status changed before the action could be applied.");
     }
     const nextStatus: AccountStatus = selectedAction === "lock" ? "Suspended" : "Active";
-    await onStatusChange(currentUser, nextStatus, reason);
+    const result = await onStatusChange(currentUser, nextStatus, reason);
+    if (result && !result.success) return result;
     setActionUser(null);
     setAction(null);
     setSelectedUser(null);
+    setAnnouncement(getDemoAccountActionSuccessMessage(selectedAction, user.name));
+    return result;
   }
 
   return (

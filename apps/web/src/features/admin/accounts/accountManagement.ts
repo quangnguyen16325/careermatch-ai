@@ -4,6 +4,7 @@ import type {
   AccountActionReasonValidation,
   AccountOperationError,
   AccountOperationErrorKind,
+  AccountOperationResult,
   AccountSearchCriteria,
 } from "./types";
 
@@ -77,9 +78,21 @@ function getAccountOperationErrorMessage(kind: AccountOperationErrorKind) {
   }
 }
 
+function getDemoAccountActionSuccessMessage(action: AccountAction, accountName: string) {
+  const actionLabel = action === "lock" ? "locked" : "unlocked";
+  return `Demo preview: ${accountName}'s account was ${actionLabel} in this preview only. No real account was changed.`;
+}
+
+function applyAccountOperationResult(accounts: AdminUser[], result: AccountOperationResult): AdminUser[] {
+  if (!result.success) return accounts;
+  return accounts.map((account) => account.id === result.accountId ? { ...account, status: result.status } : account);
+}
+
 export {
   canPerformAccountAction,
+  applyAccountOperationResult,
   filterAccounts,
+  getDemoAccountActionSuccessMessage,
   getAccountOperationErrorMessage,
   normalizeAccountOperationError,
   normalizeAccountSearchKeyword,
