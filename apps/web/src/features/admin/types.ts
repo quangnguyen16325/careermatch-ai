@@ -5,6 +5,7 @@ export type AccountStatus = "Active" | "Suspended" | "Pending";
 export type VerificationStatus = "Pending" | "Verified" | "Rejected";
 export type ModerationStatus = "Pending" | "Approved" | "Rejected" | "Flagged";
 export type ReportStatus = "Open" | "Reviewing" | "Resolved" | "Dismissed";
+export type ReportTargetType = "Job" | "Account";
 
 export type AdminUser = {
   id: string;
@@ -57,7 +58,7 @@ export type AdminReport = {
   id: string;
   reporter: string;
   reporterEmail: string;
-  targetType: "Job" | "Account";
+  targetType: ReportTargetType;
   targetLabel: string;
   reason: string;
   details: string;
