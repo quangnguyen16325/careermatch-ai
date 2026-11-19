@@ -1,0 +1,257 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AuthGuard } from '../common/guards/auth.guard.js';
+import { RolesGuard } from '../common/guards/roles.guard.js';
+import { Roles } from '../common/decorators/roles.decorator.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import type { AuthenticatedUser } from '../common/decorators/current-user.decorator.js';
+import { UserRole } from '../generated/prisma/enums.js';
+import { ApplicationsService } from './applications.service.js';
+import { ApplyJobDto } from './dto/apply-job.dto.js';
+import { WithdrawApplicationDto } from './dto/withdraw-application.dto.js';
+import { QueryMyApplicationsDto } from './dto/query-applications.dto.js';
+import { QueryJobApplicationsDto } from './dto/query-job-applications.dto.js';
+import { ShortlistCandidateDto } from './dto/shortlist-candidate.dto.js';
+import { ReviewCandidateDto } from './dto/review-candidate.dto.js';
+import { AcceptApplicationDto } from './dto/accept-application.dto.js';
+import { RejectApplicationDto } from './dto/reject-application.dto.js';
+import { HiringOutcomeDto } from './dto/hiring-outcome.dto.js';
+
+@ApiTags('applications')
+@Controller('applications')
+@UseGuards(AuthGuard, RolesGuard)
+@ApiBearerAuth()
+export class ApplicationsController {
+  constructor(private readonly applicationsService: ApplicationsService) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student apply for a published job via body payload' })
+  @ApiResponse({ status: 201, description: 'Application submitted successfully' })
+  @ApiResponse({ status: 400, description: 'Validation error or job not accepting applications' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'JOB_NOT_FOUND or STUDENT_PROFILE_NOT_FOUND' })
+  @ApiResponse({ status: 409, description: 'APPLICATION_ALREADY_EXISTS' })
+  async apply(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ApplyJobDto,
+  ) {
+    if (!dto.jobId) {
+      throw new BadRequestException({
+        code: 'JOB_ID_REQUIRED',
+        message: 'jobId is required in request body when applying via /applications',
+      });
+    }
+    return this.applicationsService.applyForJob(user.id, dto.jobId, dto);
+  }
+
+  @Post('jobs/:jobId/apply')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student apply for a published job via path parameter' })
+  @ApiResponse({ status: 201, description: 'Application submitted successfully' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'JOB_NOT_FOUND or STUDENT_PROFILE_NOT_FOUND' })
+  @ApiResponse({ status: 409, description: 'APPLICATION_ALREADY_EXISTS' })
+  applyWithJobId(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jobId') jobId: string,
+    @Body() dto: ApplyJobDto,
+  ) {
+    return this.applicationsService.applyForJob(user.id, jobId, dto);
+  }
+
+  @Post(':id/withdraw')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student withdraw an active application' })
+  @ApiResponse({ status: 200, description: 'Application withdrawn successfully' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or CANNOT_WITHDRAW_ACTIVE_INTERVIEW' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  withdraw(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: WithdrawApplicationDto,
+  ) {
+    return this.applicationsService.withdrawApplication(user.id, id, dto);
+  }
+
+  @Get('my')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student list own submitted applications' })
+  @ApiResponse({ status: 200, description: 'Paginated list of submitted applications' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  getMyApplications(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QueryMyApplicationsDto,
+  ) {
+    return this.applicationsService.getMyApplications(user.id, query);
+  }
+
+  @Get()
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer list applications with optional filters' })
+  @ApiResponse({ status: 200, description: 'Paginated list of job applications' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  getEmployerApplications(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QueryJobApplicationsDto,
+  ) {
+    return this.applicationsService.getEmployerApplications(
+      user.id,
+      query,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/review')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer mark application as REVIEWING' })
+  @ApiResponse({ status: 200, description: 'Application marked as reviewing' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  reviewApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ReviewCandidateDto,
+  ) {
+    return this.applicationsService.reviewApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/shortlist')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer shortlist candidate application' })
+  @ApiResponse({ status: 200, description: 'Application shortlisted successfully' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  shortlistApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ShortlistCandidateDto,
+  ) {
+    return this.applicationsService.shortlistApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer accept candidate application (hiring outcome: ACCEPTED)' })
+  @ApiResponse({ status: 200, description: 'Application accepted successfully' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or APPLICATION_TERMINAL_STATE' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  acceptApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AcceptApplicationDto,
+  ) {
+    return this.applicationsService.acceptApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer reject candidate application (hiring outcome: REJECTED)' })
+  @ApiResponse({ status: 200, description: 'Application rejected' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or APPLICATION_TERMINAL_STATE' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  rejectApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: RejectApplicationDto,
+  ) {
+    return this.applicationsService.rejectApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/outcome')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer update final hiring outcome (ACCEPTED / REJECTED)' })
+  @ApiResponse({ status: 200, description: 'Hiring outcome updated' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION or APPLICATION_TERMINAL_STATE' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  updateHiringOutcome(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: HiringOutcomeDto,
+  ) {
+    return this.applicationsService.updateHiringOutcome(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Get(':id')
+  @Roles(UserRole.STUDENT, UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get application details by ID' })
+  @ApiResponse({ status: 200, description: 'Application details' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  getById(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.applicationsService.getApplicationById(
+      user.id,
+      id,
+      user.role as UserRole,
+    );
+  }
+}
