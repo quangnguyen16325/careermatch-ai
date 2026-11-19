@@ -28,10 +28,10 @@ function AdminWorkspacePage({ loadError, loading = false }: AdminWorkspacePagePr
     setActivities((current) => [{ id: `activity-${Date.now()}`, title, detail, date, tone }, ...current]);
   }
 
-  function updateUserStatus(user: AdminUser, status: AccountStatus) {
+  function updateUserStatus(user: AdminUser, status: AccountStatus, reason: string) {
     setUsers((current) => current.map((item) => item.id === user.id ? { ...item, status } : item));
-    setNotice(`${user.name}'s account is now ${status.toLowerCase()}.`);
-    addActivity(`Account ${status.toLowerCase()}`, user.name, status === "Suspended" ? "rose" : "emerald");
+    setNotice(`Demo preview updated ${user.name}'s status to ${status.toLowerCase()}. No real account was changed.`);
+    addActivity(`Demo account ${status.toLowerCase()}`, `${user.name} — ${reason}`, status === "Suspended" ? "rose" : "emerald");
   }
 
   function updateEmployerStatus(employer: AdminEmployer, status: VerificationStatus, reason = "") {

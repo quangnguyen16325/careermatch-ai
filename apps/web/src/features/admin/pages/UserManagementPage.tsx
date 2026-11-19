@@ -5,13 +5,14 @@ import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
-import { AdminActionDialog } from "../components/AdminActionDialog";
-import { filterAccounts } from "../accounts/accountManagement";
+import { AccountActionDialog } from "../components/AccountActionDialog";
+import { canPerformAccountAction, filterAccounts } from "../accounts/accountManagement";
+import type { AccountAction } from "../accounts/types";
 import type { AccountStatus, AdminRole, AdminUser } from "../types";
 
 type UserManagementPageProps = {
   users: AdminUser[];
-  onStatusChange: (user: AdminUser, status: AccountStatus) => void;
+  onStatusChange: (user: AdminUser, status: AccountStatus, reason: string) => void | Promise<void>;
 };
 
 function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) {
@@ -20,6 +21,7 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
   const [status, setStatus] = useState<AccountStatus | "All statuses">("All statuses");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [actionUser, setActionUser] = useState<AdminUser | null>(null);
+  const [action, setAction] = useState<AccountAction | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
   const filtered = useMemo(
@@ -35,9 +37,15 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
     setAnnouncement(`Filters cleared. Showing all ${users.length} ${users.length === 1 ? "account" : "accounts"}.`);
   }
 
-  function changeStatus(user: AdminUser, nextStatus: AccountStatus) {
-    onStatusChange(user, nextStatus);
+  async function changeStatus(user: AdminUser, selectedAction: AccountAction, reason: string) {
+    const currentUser = users.find((account) => account.id === user.id);
+    if (!currentUser || !canPerformAccountAction(currentUser.status, selectedAction)) {
+      throw new Error("The account status changed before the action could be applied.");
+    }
+    const nextStatus: AccountStatus = selectedAction === "lock" ? "Suspended" : "Active";
+    await onStatusChange(currentUser, nextStatus, reason);
     setActionUser(null);
+    setAction(null);
     setSelectedUser(null);
   }
 
@@ -77,7 +85,7 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
       {announcement ? <p aria-live="polite" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{announcement}</p> : null}
       {filtered.length ? (
         <div className="grid gap-3">
-          {filtered.map((user) => <UserRow key={user.id} onAction={() => user.status === "Active" ? setActionUser(user) : changeStatus(user, "Active")} onSelect={() => setSelectedUser(user)} user={user} />)}
+          {filtered.map((user) => <UserRow key={user.id} onAction={() => { if (user.status === "Active") { setAction("lock"); setActionUser(user); } else if (user.status === "Suspended") { setAction("unlock"); setActionUser(user); } }} onSelect={() => setSelectedUser(user)} user={user} />)}
         </div>
       ) : (
         <Card className="py-12 text-center">
@@ -88,13 +96,12 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
         </Card>
       )}
       {selectedUser ? <UserDetailsDialog onClose={() => setSelectedUser(null)} user={selectedUser} /> : null}
-      {actionUser ? (
-        <AdminActionDialog
-          confirmLabel="Suspend account"
-          description={`Suspending ${actionUser.name} removes account access until an administrator reactivates it.`}
-          onCancel={() => setActionUser(null)}
-          onConfirm={() => changeStatus(actionUser, "Suspended")}
-          title="Suspend this account?"
+      {actionUser && action ? (
+        <AccountActionDialog
+          action={action}
+          onCancel={() => { setActionUser(null); setAction(null); }}
+          onConfirm={(reason) => changeStatus(actionUser, action, reason)}
+          user={actionUser}
         />
       ) : null}
     </div>
@@ -120,8 +127,8 @@ function UserRow({ user, onAction, onSelect }: { user: AdminUser; onAction: () =
       </div>
       <div className="flex gap-2">
         <Button className="flex-1 sm:flex-none" onClick={onSelect} size="sm" variant="secondary">View details</Button>
-        <Button className="flex-1 sm:flex-none" onClick={onAction} size="sm" variant={user.status === "Active" ? "danger" : "secondary"}>
-          {user.status === "Active" ? "Suspend" : user.status === "Suspended" ? "Unlock" : "Activate"}
+        <Button aria-label={user.status === "Pending" ? `No lock action available for pending account ${user.name}` : `${user.status === "Active" ? "Lock" : "Unlock"} account ${user.name}`} className="flex-1 sm:flex-none" disabled={user.status === "Pending"} onClick={onAction} size="sm" variant={user.status === "Active" ? "danger" : "secondary"}>
+          {user.status === "Active" ? "Lock" : user.status === "Suspended" ? "Unlock" : "Pending"}
         </Button>
       </div>
     </Card>
