@@ -1,11 +1,12 @@
 import { Modal } from "../../../components/ui/Modal";
 import { useMemo, useState } from "react";
-import { Search, Users } from "lucide-react";
+import { MapPin, RotateCcw, Search, Users } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { AdminActionDialog } from "../components/AdminActionDialog";
+import { filterAccounts } from "../accounts/accountManagement";
 import type { AccountStatus, AdminRole, AdminUser } from "../types";
 
 type UserManagementPageProps = {
@@ -19,12 +20,20 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
   const [status, setStatus] = useState<AccountStatus | "All statuses">("All statuses");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [actionUser, setActionUser] = useState<AdminUser | null>(null);
+  const [announcement, setAnnouncement] = useState("");
 
-  const filtered = useMemo(() => users.filter((user) =>
-    `${user.name} ${user.email}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) &&
-    (role === "All roles" || user.role === role) &&
-    (status === "All statuses" || user.status === status),
-  ), [query, role, status, users]);
+  const filtered = useMemo(
+    () => filterAccounts(users, { keyword: query, role, status }),
+    [query, role, status, users],
+  );
+  const hasFilters = Boolean(query.trim()) || role !== "All roles" || status !== "All statuses";
+
+  function resetFilters() {
+    setQuery("");
+    setRole("All roles");
+    setStatus("All statuses");
+    setAnnouncement(`Filters cleared. Showing all ${users.length} ${users.length === 1 ? "account" : "accounts"}.`);
+  }
 
   function changeStatus(user: AdminUser, nextStatus: AccountStatus) {
     onStatusChange(user, nextStatus);
@@ -35,34 +44,48 @@ function UserManagementPage({ onStatusChange, users }: UserManagementPageProps) 
   return (
     <div className="space-y-6">
       <PageHeader description="Search accounts, review access, and keep platform membership in good standing." eyebrow="Platform access" title="User management" />
-      <Card as="div" padding="sm" className="grid gap-3 sm:grid-cols-3">
-        <label className="relative block min-w-0 sm:col-span-1">
+      <Card as="div" padding="sm" className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_12rem_12rem_auto]">
+        <label className="relative block min-w-0 md:col-span-2 xl:col-span-1">
           <span className="sr-only">Search by name or email</span>
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-          <input className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setQuery(event.target.value)} placeholder="Search name or email" type="search" value={query} />
+          <input aria-label="Search accounts by name or email" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => { setQuery(event.target.value); setAnnouncement(""); }} placeholder="Search name or email" type="search" value={query} />
         </label>
         <label className="block">
           <span className="sr-only">Filter by role</span>
-          <select className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setRole(event.target.value as AdminRole | "All roles")} value={role}>
+          <select aria-label="Filter accounts by role" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => { setRole(event.target.value as AdminRole | "All roles"); setAnnouncement(""); }} value={role}>
             {(["All roles", "Student", "Employer", "Admin"] as const).map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>
         <label className="block">
           <span className="sr-only">Filter by account status</span>
-          <select className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setStatus(event.target.value as AccountStatus | "All statuses")} value={status}>
+          <select aria-label="Filter accounts by status" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => { setStatus(event.target.value as AccountStatus | "All statuses"); setAnnouncement(""); }} value={status}>
             {(["All statuses", "Active", "Pending", "Suspended"] as const).map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>
+        <div className="flex justify-end md:col-span-2 xl:col-span-1">
+          <Button aria-label="Reset account search and filters" className="w-full md:w-auto" icon={<RotateCcw aria-hidden="true" size={16} />} onClick={resetFilters} variant="secondary">
+            Reset filters
+          </Button>
+        </div>
       </Card>
       <div className="flex items-center justify-between gap-3">
-        <div><h2 className="font-semibold text-slate-950">Accounts</h2><p className="mt-1 text-sm text-slate-500">{filtered.length} of {users.length} users</p></div>
+        <div>
+          <h2 className="font-semibold text-slate-950">Accounts</h2>
+          <p aria-live="polite" className="mt-1 text-sm text-slate-500">Showing {filtered.length} of {users.length} {users.length === 1 ? "account" : "accounts"}</p>
+        </div>
       </div>
+      {announcement ? <p aria-live="polite" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{announcement}</p> : null}
       {filtered.length ? (
         <div className="grid gap-3">
           {filtered.map((user) => <UserRow key={user.id} onAction={() => user.status === "Active" ? setActionUser(user) : changeStatus(user, "Active")} onSelect={() => setSelectedUser(user)} user={user} />)}
         </div>
       ) : (
-        <Card className="py-12 text-center"><Users className="mx-auto size-10 text-slate-400" aria-hidden="true" /><h3 className="mt-4 text-lg font-semibold text-slate-950">No accounts found</h3><p className="mt-2 text-sm text-slate-600">Try changing the search text or account filters.</p></Card>
+        <Card className="py-12 text-center">
+          <Users className="mx-auto size-10 text-slate-400" aria-hidden="true" />
+          <h3 className="mt-4 text-lg font-semibold text-slate-950">{users.length ? "No matching accounts" : "No accounts available"}</h3>
+          <p className="mt-2 text-sm text-slate-600">{users.length ? "Try changing the search text or account filters." : "There are no accounts to display."}</p>
+          {users.length > 0 && hasFilters ? <Button className="mt-4" onClick={resetFilters} variant="secondary">Reset filters</Button> : null}
+        </Card>
       )}
       {selectedUser ? <UserDetailsDialog onClose={() => setSelectedUser(null)} user={selectedUser} /> : null}
       {actionUser ? (
@@ -91,6 +114,7 @@ function UserRow({ user, onAction, onSelect }: { user: AdminUser; onAction: () =
             <StatusBadge tone={user.role === "Employer" ? "info" : user.role === "Admin" ? "neutral" : "success"}>{user.role}</StatusBadge>
             <StatusBadge tone={tone}>{user.status}</StatusBadge>
             <span>Joined {formatDate(user.registeredAt)}</span>
+            <span className="inline-flex items-center gap-1"><MapPin aria-hidden="true" size={13} />{user.location}</span>
           </div>
         </div>
       </div>
