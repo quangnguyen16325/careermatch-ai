@@ -51,6 +51,8 @@ describe("buildReportAnalytics", () => {
   it("summarizes report totals, statuses, target types, and daily submissions", () => {
     expect(buildReportAnalytics(reports)).toEqual({
       totalReports: 3,
+      processedReports: 1,
+      processedRatePercent: 33,
       statusCounts: { Open: 1, Reviewing: 1, Resolved: 1, Dismissed: 0 },
       targetTypeCounts: { Job: 2, Account: 1 },
       submissionsByDate: [
@@ -63,6 +65,8 @@ describe("buildReportAnalytics", () => {
   it("returns zeroed metrics for missing data and ignores malformed dates", () => {
     expect(buildReportAnalytics(undefined)).toEqual({
       totalReports: 0,
+      processedReports: 0,
+      processedRatePercent: 0,
       statusCounts: { Open: 0, Reviewing: 0, Resolved: 0, Dismissed: 0 },
       targetTypeCounts: { Job: 0, Account: 0 },
       submissionsByDate: [],

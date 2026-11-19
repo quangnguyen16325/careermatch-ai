@@ -11,6 +11,8 @@ export type ReportFilterCriteria = {
 
 export type ReportAnalytics = {
   totalReports: number;
+  processedReports: number;
+  processedRatePercent: number;
   statusCounts: Record<ReportStatus, number>;
   targetTypeCounts: Record<ReportTargetType, number>;
   submissionsByDate: Array<{ date: string; count: number }>;

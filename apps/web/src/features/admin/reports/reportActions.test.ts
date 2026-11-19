@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AdminReport } from "../types";
+import { buildReportAnalytics } from "./reportAnalytics";
 import { applyReportStatusAction, canTransitionReportStatus } from "./reportActions";
 
 const report: AdminReport = {
@@ -63,5 +64,25 @@ describe("report action transitions", () => {
     if (!result.ok) return;
     expect(result.reports[1]).toBe(other);
     expect(result.reports).toHaveLength(2);
+  });
+
+  it("recomputes dashboard metrics from the updated preview reports", () => {
+    const before = buildReportAnalytics([report]);
+    const reviewing = applyReportStatusAction([report], report.id, "Reviewing", "Investigating", "2026-11-19");
+    expect(reviewing.ok).toBe(true);
+    if (!reviewing.ok) return;
+
+    const resolved = applyReportStatusAction(reviewing.reports, report.id, "Resolved", "Confirmed listing issue", "2026-11-20");
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+
+    expect(before.statusCounts.Open).toBe(1);
+    expect(buildReportAnalytics(reviewing.reports).statusCounts.Reviewing).toBe(1);
+    expect(buildReportAnalytics(resolved.reports)).toMatchObject({
+      totalReports: 1,
+      processedReports: 1,
+      processedRatePercent: 100,
+      statusCounts: { Open: 0, Reviewing: 0, Resolved: 1, Dismissed: 0 },
+    });
   });
 });

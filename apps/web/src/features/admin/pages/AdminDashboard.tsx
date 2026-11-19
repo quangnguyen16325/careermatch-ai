@@ -2,6 +2,8 @@ import { Activity, ArrowRight, BriefcaseBusiness, Building2, CircleAlert, Clipbo
 import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
+import { buildReportAnalytics, getReportDataState } from "../reports/reportAnalytics";
+import type { ReportDataState } from "../reports/types";
 import type { AdminActivity, AdminEmployer, AdminReport, AdminSection, AdminUser, ModerationJob } from "../types";
 
 type AdminDashboardProps = {
@@ -9,11 +11,12 @@ type AdminDashboardProps = {
   employers: AdminEmployer[];
   jobs: ModerationJob[];
   reports: AdminReport[];
+  reportDataState?: ReportDataState;
   activities: AdminActivity[];
   onNavigate: (section: AdminSection) => void;
 };
 
-function AdminDashboard({ activities, employers, jobs, onNavigate, reports, users }: AdminDashboardProps) {
+function AdminDashboard({ activities, employers, jobs, onNavigate, reportDataState, reports, users }: AdminDashboardProps) {
   const pendingJobs = jobs.filter((job) => job.status === "Pending").length;
   const reportedJobs = reports.filter((report) => report.targetType === "Job" && report.status !== "Resolved" && report.status !== "Dismissed").length;
   const pendingEmployers = employers.filter((employer) => employer.status === "Pending").length;
@@ -37,6 +40,8 @@ function AdminDashboard({ activities, employers, jobs, onNavigate, reports, user
         <Metric icon={<ClipboardCheck />} label="Pending approvals" value={pendingJobs} note="Jobs awaiting review" tone="amber" onClick={() => onNavigate("Job moderation")} />
         <Metric icon={<CircleAlert />} label="Reported jobs" value={reportedJobs} note="Open or under review" tone="rose" onClick={() => onNavigate("Reports")} />
       </section>
+
+      <ReportAnalyticsPanel dataState={reportDataState ?? getReportDataState(reports)} onNavigate={onNavigate} />
 
       <div className="grid gap-5 2xl:grid-cols-[1.15fr_.85fr]">
         <Card>
@@ -112,6 +117,74 @@ function AdminDashboard({ activities, employers, jobs, onNavigate, reports, user
       <span className="sr-only">{adminUsers} administrator accounts</span>
     </div>
   );
+}
+
+function ReportAnalyticsPanel({ dataState, onNavigate }: { dataState: ReportDataState; onNavigate: (section: AdminSection) => void }) {
+  if (dataState.status === "loading") {
+    return <Card aria-live="polite" aria-busy="true"><h2 className="font-semibold text-slate-950" id="report-analytics-title">Report analytics</h2><p className="mt-3 text-sm text-slate-600" role="status">Loading report analytics...</p></Card>;
+  }
+  if (dataState.status === "error") {
+    return <Card aria-labelledby="report-analytics-title"><h2 className="font-semibold text-slate-950" id="report-analytics-title">Report analytics</h2><p className="mt-3 rounded-xl bg-rose-50 p-4 text-sm text-rose-800" role="alert">Report analytics could not be loaded: {dataState.message}</p></Card>;
+  }
+  if (dataState.status === "empty") {
+    return <Card aria-labelledby="report-analytics-title"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold text-slate-950" id="report-analytics-title">Report analytics</h2><p className="mt-1 text-sm text-slate-500">Summary of community reports</p></div><PreviewLabel /></div><p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">No report data is currently available for these metrics.</p><button className="mt-4 text-sm font-semibold text-emerald-800 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600" onClick={() => onNavigate("Reports")} type="button">Open report triage <ArrowRight aria-hidden="true" className="ml-1 inline" size={15} /></button></Card>;
+  }
+
+  const analytics = buildReportAnalytics(dataState.reports);
+  const metrics = [
+    { label: "Total reports", value: analytics.totalReports, detail: "All available reports" },
+    { label: "Open", value: analytics.statusCounts.Open, detail: "Awaiting review" },
+    { label: "Reviewing", value: analytics.statusCounts.Reviewing, detail: "Under review" },
+    { label: "Resolved", value: analytics.statusCounts.Resolved, detail: "Decision recorded" },
+    { label: "Dismissed", value: analytics.statusCounts.Dismissed, detail: "Closed without action" },
+    { label: "Processed rate", value: `${analytics.processedRatePercent}%`, detail: `${analytics.processedReports} of ${analytics.totalReports} closed` },
+  ];
+  const statuses = [
+    { label: "Open", count: analytics.statusCounts.Open, tone: "bg-amber-500" },
+    { label: "Reviewing", count: analytics.statusCounts.Reviewing, tone: "bg-sky-500" },
+    { label: "Resolved", count: analytics.statusCounts.Resolved, tone: "bg-emerald-600" },
+    { label: "Dismissed", count: analytics.statusCounts.Dismissed, tone: "bg-slate-500" },
+  ];
+  const targets = [
+    { label: "Job reports", count: analytics.targetTypeCounts.Job },
+    { label: "Account reports", count: analytics.targetTypeCounts.Account },
+  ];
+
+  return (
+    <section aria-labelledby="report-analytics-title" className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><h2 className="font-semibold text-slate-950" id="report-analytics-title">Report analytics</h2><p className="mt-1 text-sm text-slate-500">Live summary from the current local preview list</p></div>
+        <div className="flex items-center gap-3"><PreviewLabel /><button className="text-sm font-semibold text-emerald-800 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600" onClick={() => onNavigate("Reports")} type="button">Open report triage <ArrowRight aria-hidden="true" className="ml-1 inline" size={15} /></button></div>
+      </div>
+      <div aria-label="Report metrics" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {metrics.map((metric) => <Card as="article" key={metric.label} padding="sm"><p className="text-xs font-semibold text-slate-600 sm:text-sm">{metric.label}</p><p className="mt-3 text-2xl font-semibold tabular-nums text-slate-950">{metric.value}</p><p className="mt-1 text-xs text-slate-500">{metric.detail}</p></Card>)}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card aria-label="Report status distribution">
+          <h3 className="font-semibold text-slate-950">Status distribution</h3>
+          <p className="mt-1 text-sm text-slate-500">Report count by current handling status</p>
+          <div className="mt-5 space-y-4">{statuses.map(({ count, label, tone }) => <DistributionBar count={count} key={label} label={label} max={analytics.totalReports} tone={tone} />)}</div>
+        </Card>
+        <Card aria-label="Report target distribution">
+          <h3 className="font-semibold text-slate-950">Reported item types</h3>
+          <p className="mt-1 text-sm text-slate-500">Distribution by reported item</p>
+          <div className="mt-5 space-y-4">{targets.map(({ count, label }) => <DistributionBar count={count} key={label} label={label} max={analytics.totalReports} tone={label === "Job reports" ? "bg-violet-600" : "bg-cyan-600"} />)}</div>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function DistributionBar({ count, label, max, tone }: { count: number; label: string; max: number; tone: string }) {
+  const percent = max > 0 ? Math.round((count / max) * 100) : 0;
+  return <div>
+    <div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="font-medium text-slate-700">{label}</span><span className="tabular-nums text-slate-600">{count} <span className="text-slate-400">({percent}%)</span></span></div>
+    <div aria-label={`${label}: ${count} of ${max} reports (${percent}%)`} aria-valuemax={max} aria-valuemin={0} aria-valuenow={count} className="h-2.5 overflow-hidden rounded-full bg-slate-100" role="progressbar"><div className={`h-full rounded-full ${tone}`} style={{ width: `${percent}%` }} /></div>
+  </div>;
+}
+
+function PreviewLabel() {
+  return <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">Preview data</span>;
 }
 
 function Metric({ icon, label, value, note, tone, onClick }: { icon: React.ReactNode; label: string; value: number; note: string; tone: "slate" | "violet" | "sky" | "emerald" | "amber" | "rose"; onClick: () => void }) {

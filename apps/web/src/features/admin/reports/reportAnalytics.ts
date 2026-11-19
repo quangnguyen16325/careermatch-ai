@@ -58,8 +58,12 @@ function buildReportAnalytics(reports: readonly AdminReport[] | null | undefined
     if (date) submissions.set(date, (submissions.get(date) ?? 0) + 1);
   }
 
+  const processedReports = statusCounts.Resolved + statusCounts.Dismissed;
+
   return {
     totalReports,
+    processedReports,
+    processedRatePercent: totalReports === 0 ? 0 : Math.round((processedReports / totalReports) * 100),
     statusCounts,
     targetTypeCounts,
     submissionsByDate: [...submissions.entries()]
