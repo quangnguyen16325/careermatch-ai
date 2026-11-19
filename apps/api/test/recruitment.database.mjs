@@ -31,6 +31,31 @@ const createdJobs = [];
 
 const prefix = `test-${randomUUID().slice(0, 8)}`;
 
+// Pause precisely between the service's preflight checks and transaction. This
+// reproduces the original race deterministically rather than relying on timing.
+function pauseTransaction() {
+  let resume, signal;
+  const gate = new Promise((resolve) => {
+    resume = resolve;
+  });
+  const entered = new Promise((resolve) => {
+    signal = resolve;
+  });
+  const proxy = new Proxy(client, {
+    get(target, key) {
+      if (key === '$transaction')
+        return async (fn) => {
+          signal();
+          await gate;
+          return client.$transaction(fn);
+        };
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  return { db: { client: proxy }, entered, resume: () => resume() };
+}
+
 async function createEmployer(hasCompany = false) {
   const email = `${prefix}-emp-${randomUUID().slice(0, 6)}@example.com`;
   const user = await client.user.create({
@@ -147,8 +172,7 @@ try {
 
   const orphanedCompany = await client.company.findFirst({
     where: {
-      taxCode:
-        winningCompany.taxCode === tax1 ? tax2 : tax1,
+      taxCode: winningCompany.taxCode === tax1 ? tax2 : tax1,
     },
   });
   assert.equal(
@@ -156,7 +180,9 @@ try {
     null,
     'Losing company insert must be rolled back; no orphaned company in database',
   );
-  console.log('  ✓ PASS: Concurrent company creation claimed atomically without orphan rows');
+  console.log(
+    '  ✓ PASS: Concurrent company creation claimed atomically without orphan rows',
+  );
 
   // =========================================================================
   // 2. Editing versus Publication State Race
@@ -169,30 +195,32 @@ try {
     data: {
       companyId: employer2.employer.companyId,
       title: 'Original Draft Title',
-      description: 'Original description for the role that is at least 10 chars.',
+      description:
+        'Original description for the role that is at least 10 chars.',
       status: 'DRAFT',
     },
   });
   createdJobs.push(draftJob.id);
 
-  // Simulate concurrent publication: job becomes PUBLISHED before edit write
-  await client.job.update({
-    where: { id: draftJob.id },
-    data: { status: 'PUBLISHED', publishedAt: new Date() },
-  });
-
-  // Attempt to update the now-PUBLISHED job via updateJob
-  await assert.rejects(
-    () =>
-      jobsService.updateJob(employer2.id, draftJob.id, {
-        title: 'Hacked Title on Published Job',
-      }),
-    (err) => {
-      const code = err.getResponse ? err.getResponse().code : err.code;
-      return code === 'CANNOT_EDIT_JOB';
-    },
-    'Updating a concurrently published job must be rejected with CANNOT_EDIT_JOB',
-  );
+  const delayedEdit = pauseTransaction();
+  const editResult = new JobsService(delayedEdit.db)
+    .updateJob(employer2.id, draftJob.id, {
+      title: 'Hacked Title on Published Job',
+    })
+    .then(
+      () => null,
+      (error) => error,
+    );
+  await delayedEdit.entered;
+  try {
+    await client.job.update({
+      where: { id: draftJob.id },
+      data: { status: 'PUBLISHED', publishedAt: new Date() },
+    });
+  } finally {
+    delayedEdit.resume();
+  }
+  assert.equal((await editResult)?.getResponse().code, 'CANNOT_EDIT_JOB');
 
   // Verify published job was NOT modified in the database
   const untouchedJob = await client.job.findUnique({
@@ -233,7 +261,9 @@ try {
     }),
   ]);
 
-  const fulfilledMod = moderationResults.filter((r) => r.status === 'fulfilled');
+  const fulfilledMod = moderationResults.filter(
+    (r) => r.status === 'fulfilled',
+  );
   const rejectedMod = moderationResults.filter((r) => r.status === 'rejected');
 
   assert.equal(
@@ -280,7 +310,142 @@ try {
     1,
     'Employer must receive exactly 1 non-contradictory notification',
   );
-  console.log('  ✓ PASS: Conflicting admin decisions resolved atomically without contradictory records');
+  console.log(
+    '  ✓ PASS: Conflicting admin decisions resolved atomically without contradictory records',
+  );
+
+  // Non-pending source states remain valid after adding conditional writes.
+  await jobsService.adminModerate(admin1.id, draftJob.id, { status: 'CLOSED' });
+  assert.equal(
+    (await client.job.findUniqueOrThrow({ where: { id: draftJob.id } })).status,
+    'CLOSED',
+  );
+  const publishedForRejection = await client.job.create({
+    data: {
+      companyId: employer2.employer.companyId,
+      title: 'Published review fixture',
+      description: 'Published job requiring moderation revocation.',
+      status: 'PUBLISHED',
+    },
+  });
+  createdJobs.push(publishedForRejection.id);
+  await jobsService.adminModerate(admin1.id, publishedForRejection.id, {
+    status: 'REJECTED',
+    reason: 'Published content violates the recruitment policy',
+  });
+  assert.equal(
+    (
+      await client.job.findUniqueOrThrow({
+        where: { id: publishedForRejection.id },
+      })
+    ).status,
+    'REJECTED',
+  );
+  await companiesService.adminVerify(admin1.id, employer2.employer.companyId, {
+    status: 'REJECTED',
+    reason: 'Business verification revoked after compliance review',
+  });
+  await companiesService.adminVerify(admin1.id, employer2.employer.companyId, {
+    status: 'VERIFIED',
+  });
+  assert.equal(
+    (
+      await client.company.findUniqueOrThrow({
+        where: { id: employer2.employer.companyId },
+      })
+    ).verificationStatus,
+    'VERIFIED',
+  );
+
+  await jobsService.updateJob(employer2.id, publishedForRejection.id, {
+    title: 'Corrected posting ready for review',
+  });
+  assert.equal(
+    (
+      await client.job.findUniqueOrThrow({
+        where: { id: publishedForRejection.id },
+      })
+    ).status,
+    'DRAFT',
+  );
+  await jobsService.submitForApproval(employer2.id, publishedForRejection.id);
+  assert.equal(
+    (
+      await client.job.findUniqueOrThrow({
+        where: { id: publishedForRejection.id },
+      })
+    ).status,
+    'PENDING_APPROVAL',
+  );
+
+  // A stale revocation cannot overwrite a decision made after its preflight.
+  const delayedRevocation = pauseTransaction();
+  const staleDecision = new CompaniesService(delayedRevocation.db)
+    .adminVerify(admin1.id, employer2.employer.companyId, {
+      status: 'REJECTED',
+      reason: 'Stale compliance decision must not overwrite current state',
+    })
+    .then(
+      () => null,
+      (error) => error,
+    );
+  await delayedRevocation.entered;
+  try {
+    await companiesService.adminVerify(
+      admin2.id,
+      employer2.employer.companyId,
+      {
+        status: 'REJECTED',
+        reason: 'Current compliance decision wins the conditional update',
+      },
+    );
+  } finally {
+    delayedRevocation.resume();
+  }
+  assert.equal(
+    (await staleDecision)?.getResponse().code,
+    'INVALID_STATE_TRANSITION',
+  );
+  await companiesService.adminVerify(admin1.id, employer2.employer.companyId, {
+    status: 'VERIFIED',
+  });
+  const delayedCompanyEdit = pauseTransaction();
+  const companyEditResult = new CompaniesService(delayedCompanyEdit.db)
+    .updateMyCompany(employer2.id, {
+      name: 'Stale edit must not undo revocation',
+    })
+    .then(
+      () => null,
+      (error) => error,
+    );
+  await delayedCompanyEdit.entered;
+  try {
+    await companiesService.adminVerify(
+      admin2.id,
+      employer2.employer.companyId,
+      {
+        status: 'REJECTED',
+        reason: 'Revoked while employer edit was awaiting its transaction',
+      },
+    );
+  } finally {
+    delayedCompanyEdit.resume();
+  }
+  assert.equal(
+    (await companyEditResult)?.getResponse().code,
+    'COMPANY_STATE_CHANGED',
+  );
+  assert.equal(
+    (
+      await client.company.findUniqueOrThrow({
+        where: { id: employer2.employer.companyId },
+      })
+    ).verificationStatus,
+    'REJECTED',
+  );
+  console.log(
+    '  ✓ PASS: Published job moderation, rejected-job correction/resubmission, company revocation/reverification and stale-decision/edit protection',
+  );
 
   // =========================================================================
   // 4. Null PATCH Values Validation & Handling
@@ -334,7 +499,9 @@ try {
   );
 
   // Nullable column in Company (description: null) should be accepted
-  const nullableCompDto = plainToInstance(UpdateCompanyDto, { description: null });
+  const nullableCompDto = plainToInstance(UpdateCompanyDto, {
+    description: null,
+  });
   const nullableCompErrors = await validate(nullableCompDto);
   assert.equal(
     nullableCompErrors.length,
@@ -342,18 +509,24 @@ try {
     'UpdateCompanyDto should allow setting nullable column (description: null)',
   );
 
-  console.log('  ✓ PASS: PATCH DTOs reject nulls on required columns and accept empty objects');
+  console.log(
+    '  ✓ PASS: PATCH DTOs reject nulls on required columns and accept empty objects',
+  );
 
   console.log('🎉 ALL real PostgreSQL recruitment regression tests PASSED!');
 } finally {
   console.log('🧹 Cleaning up test fixtures...');
   for (const jobId of createdJobs) {
     await client.jobSkill.deleteMany({ where: { jobId } }).catch(() => {});
-    await client.auditLog.deleteMany({ where: { entityId: jobId } }).catch(() => {});
+    await client.auditLog
+      .deleteMany({ where: { entityId: jobId } })
+      .catch(() => {});
     await client.job.deleteMany({ where: { id: jobId } }).catch(() => {});
   }
   for (const compId of createdCompanies) {
-    await client.auditLog.deleteMany({ where: { entityId: compId } }).catch(() => {});
+    await client.auditLog
+      .deleteMany({ where: { entityId: compId } })
+      .catch(() => {});
     await client.employerProfile
       .updateMany({ where: { companyId: compId }, data: { companyId: null } })
       .catch(() => {});
@@ -361,7 +534,9 @@ try {
   }
   for (const userId of createdUsers) {
     await client.notification.deleteMany({ where: { userId } }).catch(() => {});
-    await client.employerProfile.deleteMany({ where: { userId } }).catch(() => {});
+    await client.employerProfile
+      .deleteMany({ where: { userId } })
+      .catch(() => {});
     await client.user.deleteMany({ where: { id: userId } }).catch(() => {});
   }
   await client.$disconnect();

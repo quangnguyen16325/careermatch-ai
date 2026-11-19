@@ -145,16 +145,32 @@ export class CompaniesService {
         : employer.company.verificationStatus;
 
     return this.db.client.$transaction(async (tx) => {
-      const updated = await tx.company.update({
-        where: { id: employer.company!.id },
+      const changed = await tx.company.updateMany({
+        where: {
+          id: employer.company!.id,
+          verificationStatus: employer.company!.verificationStatus,
+        },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
-          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.description !== undefined
+            ? { description: dto.description }
+            : {}),
           ...(dto.website !== undefined ? { website: dto.website } : {}),
           ...(dto.location !== undefined ? { location: dto.location } : {}),
           ...(dto.taxCode !== undefined ? { taxCode: dto.taxCode } : {}),
           verificationStatus: nextVerificationStatus,
+          ...(nextVerificationStatus === VerificationStatus.PENDING
+            ? { verifiedAt: null }
+            : {}),
         },
+      });
+      if (changed.count !== 1)
+        throw new ConflictException({
+          code: 'COMPANY_STATE_CHANGED',
+          message: 'Company verification changed; reload before editing',
+        });
+      const updated = await tx.company.findUniqueOrThrow({
+        where: { id: employer.company!.id },
       });
 
       await tx.auditLog.create({
@@ -166,7 +182,8 @@ export class CompaniesService {
           metadata: {
             changes: JSON.parse(JSON.stringify(dto)) as Prisma.InputJsonValue,
             resubmittedForVerification:
-              employer.company!.verificationStatus === VerificationStatus.REJECTED,
+              employer.company!.verificationStatus ===
+              VerificationStatus.REJECTED,
           },
         },
       });
@@ -294,7 +311,8 @@ export class CompaniesService {
       const updateResult = await tx.company.updateMany({
         where: {
           id: companyId,
-          verificationStatus: VerificationStatus.PENDING,
+          // Preserve revocation/re-verification while rejecting stale decisions.
+          verificationStatus: company.verificationStatus,
         },
         data: {
           verificationStatus: dto.status,
@@ -307,7 +325,7 @@ export class CompaniesService {
       if (updateResult.count === 0) {
         throw new BadRequestException({
           code: 'INVALID_STATE_TRANSITION',
-          message: 'Company verification status has changed or is no longer pending',
+          message: 'Company verification status has changed since the decision',
         });
       }
 

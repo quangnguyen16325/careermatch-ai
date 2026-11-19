@@ -248,7 +248,7 @@ describe('CompaniesService', () => {
         },
       });
 
-      mockDb.client.company.update.mockResolvedValue({
+      mockDb.client.company.findUniqueOrThrow.mockResolvedValue({
         id: 'comp-1',
         name: 'New Name',
         verificationStatus: VerificationStatus.PENDING,
@@ -259,7 +259,7 @@ describe('CompaniesService', () => {
       });
 
       expect(result.verificationStatus).toBe(VerificationStatus.PENDING);
-      expect(mockDb.client.company.update).toHaveBeenCalledWith(
+      expect(mockDb.client.company.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             name: 'New Name',

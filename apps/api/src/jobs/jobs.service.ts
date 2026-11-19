@@ -264,18 +264,27 @@ export class JobsService {
         },
         data: {
           updatedAt: new Date(),
+          // Corrected rejected content re-enters the documented draft workflow.
+          ...(job.status === JobStatus.REJECTED
+            ? { status: JobStatus.DRAFT }
+            : {}),
           ...(dto.title !== undefined ? { title: dto.title } : {}),
-          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.description !== undefined
+            ? { description: dto.description }
+            : {}),
           ...(dto.location !== undefined ? { location: dto.location } : {}),
           ...(dto.workMode !== undefined ? { workMode: dto.workMode } : {}),
-          ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
+          ...(dto.categoryId !== undefined
+            ? { categoryId: dto.categoryId }
+            : {}),
         },
       });
 
       if (updateResult.count === 0) {
         throw new BadRequestException({
           code: 'CANNOT_EDIT_JOB',
-          message: 'Job status has changed or cannot be edited. It must be in DRAFT or REJECTED status.',
+          message:
+            'Job status has changed or cannot be edited. It must be in DRAFT or REJECTED status.',
         });
       }
 
@@ -356,7 +365,8 @@ export class JobsService {
     if (!isCompanyVerified) {
       throw new ForbiddenException({
         code: 'COMPANY_NOT_VERIFIED',
-        message: 'Your company must be verified before submitting jobs for approval',
+        message:
+          'Your company must be verified before submitting jobs for approval',
       });
     }
 
@@ -385,7 +395,8 @@ export class JobsService {
       if (!verifiedCompany) {
         throw new ForbiddenException({
           code: 'COMPANY_NOT_VERIFIED',
-          message: 'Your company must be verified before submitting jobs for approval',
+          message:
+            'Your company must be verified before submitting jobs for approval',
         });
       }
 
@@ -404,7 +415,8 @@ export class JobsService {
       if (updateResult.count === 0) {
         throw new BadRequestException({
           code: 'INVALID_STATE_TRANSITION',
-          message: 'Job cannot be submitted for approval from its current status',
+          message:
+            'Job cannot be submitted for approval from its current status',
         });
       }
 
@@ -742,11 +754,7 @@ export class JobsService {
     };
   }
 
-  async adminModerate(
-    adminUserId: string,
-    jobId: string,
-    dto: ModerateJobDto,
-  ) {
+  async adminModerate(adminUserId: string, jobId: string, dto: ModerateJobDto) {
     const job = await this.db.client.job.findUnique({
       where: { id: jobId },
       include: {
@@ -794,7 +802,9 @@ export class JobsService {
       const updateResult = await tx.job.updateMany({
         where: {
           id: jobId,
-          status: JobStatus.PENDING_APPROVAL,
+          // Compare with the source state validated above, including legitimate
+          // PUBLISHED -> CLOSED/REJECTED moderation transitions.
+          status: job.status,
         },
         data: {
           status: dto.status,
@@ -811,7 +821,7 @@ export class JobsService {
       if (updateResult.count === 0) {
         throw new BadRequestException({
           code: 'INVALID_STATE_TRANSITION',
-          message: 'Job status has changed or is no longer pending approval',
+          message: 'Job status has changed since the moderation decision',
         });
       }
 
@@ -845,7 +855,10 @@ export class JobsService {
         },
       });
 
-      if (dto.status === JobStatus.PUBLISHED || dto.status === JobStatus.REJECTED) {
+      if (
+        dto.status === JobStatus.PUBLISHED ||
+        dto.status === JobStatus.REJECTED
+      ) {
         const notificationType =
           dto.status === JobStatus.PUBLISHED
             ? NotificationType.JOB_APPROVED
@@ -905,7 +918,11 @@ export class JobsService {
     if (query.location) {
       where.OR = [
         { location: { contains: query.location, mode: 'insensitive' } },
-        { company: { location: { contains: query.location, mode: 'insensitive' } } },
+        {
+          company: {
+            location: { contains: query.location, mode: 'insensitive' },
+          },
+        },
       ];
     }
 
@@ -925,10 +942,7 @@ export class JobsService {
       ];
 
       if (where.OR) {
-        where.AND = [
-          { OR: where.OR },
-          { OR: searchCondition },
-        ];
+        where.AND = [{ OR: where.OR }, { OR: searchCondition }];
         delete where.OR;
       } else {
         where.OR = searchCondition;
