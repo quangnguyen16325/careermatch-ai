@@ -129,8 +129,8 @@ function UserRow({ user, onAction, onSelect }: { user: AdminUser; onAction: () =
         </div>
       </div>
       <div className="flex gap-2">
-        <Button className="flex-1 sm:flex-none" onClick={onSelect} size="sm" variant="secondary">View details</Button>
-        <Button aria-label={user.status === "Pending" ? `No lock action available for pending account ${user.name}` : `${user.status === "Active" ? "Lock" : "Unlock"} account ${user.name}`} className="flex-1 sm:flex-none" disabled={user.status === "Pending"} onClick={onAction} size="sm" variant={user.status === "Active" ? "danger" : "secondary"}>
+        <Button className="min-h-11 flex-1 sm:flex-none" onClick={onSelect} size="sm" variant="secondary">View details</Button>
+        <Button aria-label={user.status === "Pending" ? `No lock action available for pending account ${user.name}` : `${user.status === "Active" ? "Lock" : "Unlock"} account ${user.name}`} className="min-h-11 flex-1 sm:flex-none" disabled={user.status === "Pending"} onClick={onAction} size="sm" variant={user.status === "Active" ? "danger" : "secondary"}>
           {user.status === "Active" ? "Lock" : user.status === "Suspended" ? "Unlock" : "Pending"}
         </Button>
       </div>
