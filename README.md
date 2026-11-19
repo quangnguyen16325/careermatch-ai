@@ -77,6 +77,9 @@ pnpm typecheck        # TypeScript checks
 pnpm infra:up         # start PostgreSQL and Redis
 pnpm infra:down       # stop local infrastructure
 pnpm db:validate      # validate Prisma schema
+pnpm db:seed          # idempotent database seed (preserves existing data)
+# To perform a clean reset & re-seed on a disposable database:
+# SEED_RESET=1 pnpm db:seed
 ```
 
 ## Repository conventions
@@ -91,6 +94,9 @@ pnpm db:validate      # validate Prisma schema
 See [docs/architecture.md](docs/architecture.md), [docs/development.md](docs/development.md), and [CONTRIBUTING.md](CONTRIBUTING.md) before implementing a module.
 
 ## Project documentation and task traceability
+
+See [recruitment API delivery](docs/recruitment-api.md) for company/job/catalog,
+public search and saved-job APIs, lifecycle regression checks and seed limits.
 
 For parallel frontend/backend development, start with the
 [API integration contract](docs/api-contracts.md). Proposed endpoints are explicitly

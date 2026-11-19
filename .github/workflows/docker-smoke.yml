@@ -28,6 +28,8 @@ jobs:
         run: docker compose exec -T -e OWNERSHIP_TEST_DISPOSABLE=1 api node test/ownership.database.mjs
       - name: Verify email recovery against PostgreSQL and local SMTP
         run: docker compose exec -T -e RECOVERY_TEST_DISPOSABLE=1 api node test/recovery.database.mjs
+      - name: Verify recruitment against disposable PostgreSQL
+        run: docker compose exec -T -e RECRUITMENT_TEST_DISPOSABLE=1 api node test/recruitment.database.mjs
       - name: Verify database extensions and migration
         run: |
           docker compose exec -T postgres psql -U careermatch -d careermatch -v ON_ERROR_STOP=1 -c "SELECT extname FROM pg_extension WHERE extname IN ('vector','pgcrypto');"
