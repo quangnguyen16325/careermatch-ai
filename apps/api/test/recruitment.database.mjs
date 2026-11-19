@@ -451,6 +451,37 @@ try {
   // 4. Null PATCH Values Validation & Handling
   // =========================================================================
   console.log('  Testing PATCH null values rejection...');
+  const student = await client.user.create({
+    data: {
+      email: `${prefix}-saved-student@example.com`,
+      passwordHash: 'test-only',
+      role: 'STUDENT',
+      status: 'ACTIVE',
+      student: { create: { fullName: 'Saved job fixture' } },
+    },
+  });
+  createdUsers.push(student.id);
+  await client.job.update({
+    where: { id: draftJob.id },
+    data: { status: 'PUBLISHED' },
+  });
+  await jobsService.saveJob(student.id, draftJob.id);
+  assert.equal((await jobsService.getSavedJobs(student.id, {})).meta.total, 1);
+  await client.job.update({
+    where: { id: draftJob.id },
+    data: { status: 'DRAFT', description: 'Private unapproved revision' },
+  });
+  assert.equal((await jobsService.getSavedJobs(student.id, {})).meta.total, 0);
+  assert.equal(
+    (await jobsService.searchPublicJobs({})).data.some(
+      (job) => job.id === draftJob.id,
+    ),
+    false,
+  );
+  await assert.rejects(
+    () => jobsService.getPublicJobById(draftJob.id),
+    (error) => error.getStatus() === 404,
+  );
 
   // UpdateJobDto validation
   const invalidJobDto1 = plainToInstance(UpdateJobDto, { skills: null });

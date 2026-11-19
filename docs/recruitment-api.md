@@ -8,7 +8,8 @@ use mock data; API delivery does not imply frontend integration is complete.
 Employer routes require the current EMPLOYER session and scope jobs to the
 employer's company. Admin verification/moderation/catalog writes require ADMIN.
 Saved-job routes require STUDENT and use the session's student profile. Public
-job list/detail queries include only PUBLISHED jobs. Employer details for
+job list/detail queries and student saved-job content include only PUBLISHED jobs;
+saving a job does not grant access to later draft/rejected revisions. Employer details for
 unpublished jobs use `GET /jobs/my/:id`; public detail uses `GET /jobs/:id`.
 Current list responses use `{ data, meta: { total, page, pageSize, totalPages } }`.
 These routes use Nest's HTTP exception shape, not the auth filter's envelope;

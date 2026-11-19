@@ -1124,7 +1124,12 @@ export class JobsService {
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
 
-    const where = { studentId: student.id };
+    // Saving a formerly published job must not grant access to its later
+    // rejected/draft edits. Only published content is visible to students.
+    const where = {
+      studentId: student.id,
+      job: { status: JobStatus.PUBLISHED },
+    };
 
     const [total, savedRecords] = await Promise.all([
       this.db.client.savedJob.count({ where }),
