@@ -33,6 +33,11 @@ describe("normalizeAccountSearchKeyword and filterAccounts", () => {
   it("applies optional role and status criteria along with the keyword", () => {
     expect(filterAccounts(accounts, { keyword: "example.test", role: "Employer", status: "Active" })).toEqual([accounts[0]]);
   });
+
+  it("filters by role and status independently", () => {
+    expect(filterAccounts(accounts, { keyword: "", role: "Student" })).toEqual([accounts[1]]);
+    expect(filterAccounts(accounts, { keyword: "", status: "Suspended" })).toEqual([accounts[1]]);
+  });
 });
 
 describe("validateAccountActionReason", () => {
