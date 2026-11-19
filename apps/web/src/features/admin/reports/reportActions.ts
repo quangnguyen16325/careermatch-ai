@@ -16,8 +16,8 @@ function applyReportStatusAction(
   note: string,
   handledAt = new Date().toISOString().slice(0, 10),
 ): ReportActionResult {
-  const currentReports = reports ?? [];
-  const currentReport = currentReports.find((report) => report.id === reportId);
+  const currentReports = Array.isArray(reports) ? reports : [];
+  const currentReport = currentReports.find((report) => report && report.id === reportId);
   if (!currentReport) {
     return { ok: false, code: "not-found", message: `Report ${reportId} is no longer available.` };
   }
@@ -51,7 +51,7 @@ function applyReportStatusAction(
   return {
     ok: true,
     report: updatedReport,
-    reports: currentReports.map((report) => report.id === reportId ? updatedReport : report),
+    reports: currentReports.map((report) => report && report.id === reportId ? updatedReport : report),
   };
 }
 

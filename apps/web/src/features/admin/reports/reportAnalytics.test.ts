@@ -30,6 +30,20 @@ describe("normalizeReportSearchTerm and filterAndSortReports", () => {
     expect(filterAndSortReports(reports, { status: "Open", targetType: "Account" })).toEqual([]);
   });
 
+  it("combines search, status, target type, and sort criteria", () => {
+    expect(filterAndSortReports(reports, {
+      query: " engineer ",
+      status: "Open",
+      targetType: "Job",
+      sortOrder: "oldest",
+    })).toEqual([reports[0]]);
+    expect(filterAndSortReports(reports, {
+      query: "northstar",
+      status: "Reviewing",
+      targetType: "Job",
+    })).toEqual([]);
+  });
+
   it("returns empty results for missing reports or unmatched criteria", () => {
     expect(filterAndSortReports(undefined)).toEqual([]);
     expect(filterAndSortReports(null, { query: "no match" })).toEqual([]);
@@ -76,6 +90,16 @@ describe("buildReportAnalytics", () => {
       submissionsByDate: [],
     });
     expect(buildReportAnalytics([{ ...reports[0], submittedAt: "2026-02-30" }]).submissionsByDate).toEqual([]);
+  });
+
+  it("ignores malformed rows and unsupported statuses or target types in metrics", () => {
+    const unsupported = { ...reports[0], status: "Pending" as AdminReport["status"] };
+    const unsupportedTarget = { ...reports[1], targetType: "Candidate" as AdminReport["targetType"] };
+    const analytics = buildReportAnalytics([null as unknown as AdminReport, unsupported, unsupportedTarget, reports[0]]);
+
+    expect(analytics.totalReports).toBe(1);
+    expect(analytics.statusCounts.Open).toBe(1);
+    expect(analytics.targetTypeCounts.Job).toBe(1);
   });
 });
 

@@ -46,6 +46,27 @@ describe("report action transitions", () => {
     expect(reports).toEqual([report]);
   });
 
+  it("skips malformed rows while updating a valid report", () => {
+    const reports = [null as unknown as AdminReport, report];
+    const result = applyReportStatusAction(reports, report.id, "Reviewing", "Check the listing", "2026-11-19");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reports[0]).toBeNull();
+    expect(result.reports[1].status).toBe("Reviewing");
+  });
+
+  it("uses an empty history when legacy preview data has no history", () => {
+    const withoutHistory = { ...report, history: undefined } as unknown as AdminReport;
+    const result = applyReportStatusAction([withoutHistory], report.id, "Reviewing", "Check the listing", "2026-11-19");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.report.history).toEqual([
+      { status: "Reviewing", date: "2026-11-19", note: "Status changed from Open to Reviewing. Check the listing" },
+    ]);
+  });
+
   it("rejects invalid transitions and short resolution reasons without changing report data", () => {
     const reviewing = { ...report, status: "Reviewing" as const };
     const invalid = applyReportStatusAction([report], report.id, "Resolved", "A complete reason", "2026-11-19");
