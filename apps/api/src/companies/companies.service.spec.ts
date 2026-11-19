@@ -18,14 +18,17 @@ describe('CompaniesService', () => {
       employerProfile: {
         findUnique: ReturnType<typeof vi.fn>;
         update: ReturnType<typeof vi.fn>;
+        updateMany: ReturnType<typeof vi.fn>;
       };
       company: {
         findUnique: ReturnType<typeof vi.fn>;
+        findUniqueOrThrow: ReturnType<typeof vi.fn>;
         findFirst: ReturnType<typeof vi.fn>;
         findMany: ReturnType<typeof vi.fn>;
         count: ReturnType<typeof vi.fn>;
         create: ReturnType<typeof vi.fn>;
         update: ReturnType<typeof vi.fn>;
+        updateMany: ReturnType<typeof vi.fn>;
       };
       auditLog: {
         create: ReturnType<typeof vi.fn>;
@@ -43,14 +46,17 @@ describe('CompaniesService', () => {
         employerProfile: {
           findUnique: vi.fn(),
           update: vi.fn(),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         company: {
           findUnique: vi.fn(),
+          findUniqueOrThrow: vi.fn(),
           findFirst: vi.fn(),
           findMany: vi.fn(),
           count: vi.fn(),
           create: vi.fn(),
           update: vi.fn(),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         auditLog: {
           create: vi.fn(),
@@ -136,8 +142,8 @@ describe('CompaniesService', () => {
           verificationStatus: VerificationStatus.PENDING,
         }),
       });
-      expect(mockDb.client.employerProfile.update).toHaveBeenCalledWith({
-        where: { id: 'emp-1' },
+      expect(mockDb.client.employerProfile.updateMany).toHaveBeenCalledWith({
+        where: { id: 'emp-1', companyId: null },
         data: { companyId: 'comp-new' },
       });
       expect(mockDb.client.auditLog.create).toHaveBeenCalledWith({
@@ -148,6 +154,27 @@ describe('CompaniesService', () => {
           entityId: 'comp-new',
         }),
       });
+    });
+
+    it('throws BadRequestException if employer company slot was claimed concurrently', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue({
+        id: 'emp-1',
+        userId: 'user-1',
+        companyId: null,
+      });
+      mockDb.client.company.findUnique.mockResolvedValue(null);
+      mockDb.client.company.create.mockResolvedValue({
+        id: 'comp-new',
+        name: 'Acme Corp',
+      });
+      // Simulate race condition: another transaction already claimed the slot
+      mockDb.client.employerProfile.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.create('user-1', {
+          name: 'Acme Corp',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -341,7 +368,7 @@ describe('CompaniesService', () => {
         verificationStatus: VerificationStatus.PENDING,
         employers: [{ userId: 'emp-user-1' }],
       });
-      mockDb.client.company.update.mockResolvedValue({
+      mockDb.client.company.findUniqueOrThrow.mockResolvedValue({
         id: 'comp-1',
         name: 'Acme Corp',
         verificationStatus: VerificationStatus.VERIFIED,
@@ -353,8 +380,12 @@ describe('CompaniesService', () => {
       });
 
       expect(result.verificationStatus).toBe(VerificationStatus.VERIFIED);
-      expect(mockDb.client.company.update).toHaveBeenCalledWith(
+      expect(mockDb.client.company.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: {
+            id: 'comp-1',
+            verificationStatus: VerificationStatus.PENDING,
+          },
           data: expect.objectContaining({
             verificationStatus: VerificationStatus.VERIFIED,
             verifiedAt: expect.any(Date),
@@ -384,7 +415,7 @@ describe('CompaniesService', () => {
         verificationStatus: VerificationStatus.PENDING,
         employers: [{ userId: 'emp-user-1' }],
       });
-      mockDb.client.company.update.mockResolvedValue({
+      mockDb.client.company.findUniqueOrThrow.mockResolvedValue({
         id: 'comp-1',
         name: 'Fake Corp',
         verificationStatus: VerificationStatus.REJECTED,

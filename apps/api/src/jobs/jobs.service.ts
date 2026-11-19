@@ -247,14 +247,39 @@ export class JobsService {
       });
     }
 
-    await this.validateCategoryExists(dto.categoryId);
+    if (dto.categoryId) {
+      await this.validateCategoryExists(dto.categoryId);
+    }
 
-    if (dto.skills?.length) {
+    if (Array.isArray(dto.skills) && dto.skills.length > 0) {
       await this.validateSkillsExist(dto.skills.map((s) => s.skillId));
     }
 
     return this.db.client.$transaction(async (tx) => {
-      if (dto.skills !== undefined) {
+      const updateResult = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          companyId: employer.companyId!,
+          status: { in: [JobStatus.DRAFT, JobStatus.REJECTED] },
+        },
+        data: {
+          updatedAt: new Date(),
+          ...(dto.title !== undefined ? { title: dto.title } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.location !== undefined ? { location: dto.location } : {}),
+          ...(dto.workMode !== undefined ? { workMode: dto.workMode } : {}),
+          ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'CANNOT_EDIT_JOB',
+          message: 'Job status has changed or cannot be edited. It must be in DRAFT or REJECTED status.',
+        });
+      }
+
+      if (Array.isArray(dto.skills)) {
         await tx.jobSkill.deleteMany({
           where: { jobId },
         });
@@ -271,15 +296,8 @@ export class JobsService {
         }
       }
 
-      const updated = await tx.job.update({
+      const updated = await tx.job.findUniqueOrThrow({
         where: { id: jobId },
-        data: {
-          ...(dto.title !== undefined ? { title: dto.title } : {}),
-          ...(dto.description !== undefined ? { description: dto.description } : {}),
-          ...(dto.location !== undefined ? { location: dto.location } : {}),
-          ...(dto.workMode !== undefined ? { workMode: dto.workMode } : {}),
-          ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
-        },
         include: {
           skills: {
             include: { skill: true },
@@ -357,9 +375,41 @@ export class JobsService {
     }
 
     return this.db.client.$transaction(async (tx) => {
-      const updated = await tx.job.update({
+      const verifiedCompany = await tx.company.findFirst({
+        where: {
+          id: employer.companyId!,
+          verificationStatus: VerificationStatus.VERIFIED,
+        },
+      });
+
+      if (!verifiedCompany) {
+        throw new ForbiddenException({
+          code: 'COMPANY_NOT_VERIFIED',
+          message: 'Your company must be verified before submitting jobs for approval',
+        });
+      }
+
+      const updateResult = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          companyId: employer.companyId!,
+          status: { in: [JobStatus.DRAFT, JobStatus.REJECTED] },
+        },
+        data: {
+          status: JobStatus.PENDING_APPROVAL,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Job cannot be submitted for approval from its current status',
+        });
+      }
+
+      const updated = await tx.job.findUniqueOrThrow({
         where: { id: jobId },
-        data: { status: JobStatus.PENDING_APPROVAL },
         include: {
           category: true,
           skills: { include: { skill: true } },
@@ -444,9 +494,27 @@ export class JobsService {
     }
 
     return this.db.client.$transaction(async (tx) => {
-      const updated = await tx.job.update({
+      const updateResult = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          companyId: employer.companyId!,
+          status: JobStatus.PENDING_APPROVAL,
+        },
+        data: {
+          status: JobStatus.DRAFT,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Job cannot be withdrawn to draft from current status',
+        });
+      }
+
+      const updated = await tx.job.findUniqueOrThrow({
         where: { id: jobId },
-        data: { status: JobStatus.DRAFT },
         include: {
           category: true,
           skills: { include: { skill: true } },
@@ -511,9 +579,27 @@ export class JobsService {
     }
 
     return this.db.client.$transaction(async (tx) => {
-      const updated = await tx.job.update({
+      const updateResult = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          companyId: employer.companyId!,
+          status: JobStatus.PUBLISHED,
+        },
+        data: {
+          status: JobStatus.CLOSED,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Job cannot be closed from its current status',
+        });
+      }
+
+      const updated = await tx.job.findUniqueOrThrow({
         where: { id: jobId },
-        data: { status: JobStatus.CLOSED },
         include: {
           category: true,
           skills: { include: { skill: true } },
@@ -572,9 +658,20 @@ export class JobsService {
     }
 
     return this.db.client.$transaction(async (tx) => {
-      await tx.job.delete({
-        where: { id: jobId },
+      const deleteResult = await tx.job.deleteMany({
+        where: {
+          id: jobId,
+          companyId: employer.companyId!,
+          status: JobStatus.DRAFT,
+        },
       });
+
+      if (deleteResult.count === 0) {
+        throw new BadRequestException({
+          code: 'CANNOT_DELETE_NON_DRAFT',
+          message: 'Only draft jobs can be deleted or job status has changed',
+        });
+      }
 
       await tx.auditLog.create({
         data: {
@@ -694,8 +791,11 @@ export class JobsService {
     }
 
     return this.db.client.$transaction(async (tx) => {
-      const updated = await tx.job.update({
-        where: { id: jobId },
+      const updateResult = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          status: JobStatus.PENDING_APPROVAL,
+        },
         data: {
           status: dto.status,
           publishedAt:
@@ -704,7 +804,19 @@ export class JobsService {
               : dto.status === JobStatus.REJECTED
                 ? null
                 : job.publishedAt,
+          updatedAt: new Date(),
         },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Job status has changed or is no longer pending approval',
+        });
+      }
+
+      const updated = await tx.job.findUniqueOrThrow({
+        where: { id: jobId },
         include: {
           category: true,
           skills: { include: { skill: true } },

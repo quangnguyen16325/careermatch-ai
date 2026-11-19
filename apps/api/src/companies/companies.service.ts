@@ -62,10 +62,18 @@ export class CompaniesService {
         },
       });
 
-      await tx.employerProfile.update({
-        where: { id: employer.id },
+      // Atomically claim the employer profile slot where companyId is still null
+      const claimResult = await tx.employerProfile.updateMany({
+        where: { id: employer.id, companyId: null },
         data: { companyId: company.id },
       });
+
+      if (claimResult.count === 0) {
+        throw new BadRequestException({
+          code: 'COMPANY_ALREADY_EXISTS',
+          message: 'Employer already has a company profile',
+        });
+      }
 
       await tx.auditLog.create({
         data: {
@@ -283,13 +291,28 @@ export class CompaniesService {
     }
 
     return this.db.client.$transaction(async (tx) => {
-      const updated = await tx.company.update({
-        where: { id: companyId },
+      const updateResult = await tx.company.updateMany({
+        where: {
+          id: companyId,
+          verificationStatus: VerificationStatus.PENDING,
+        },
         data: {
           verificationStatus: dto.status,
           verifiedAt:
             dto.status === VerificationStatus.VERIFIED ? new Date() : null,
+          updatedAt: new Date(),
         },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Company verification status has changed or is no longer pending',
+        });
+      }
+
+      const updated = await tx.company.findUniqueOrThrow({
+        where: { id: companyId },
       });
 
       await tx.auditLog.create({

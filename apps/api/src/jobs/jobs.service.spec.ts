@@ -25,6 +25,7 @@ describe('JobsService', () => {
       };
       company: {
         findUnique: ReturnType<typeof vi.fn>;
+        findFirst: ReturnType<typeof vi.fn>;
       };
       careerCategory: {
         findUnique: ReturnType<typeof vi.fn>;
@@ -34,12 +35,15 @@ describe('JobsService', () => {
       };
       job: {
         findUnique: ReturnType<typeof vi.fn>;
+        findUniqueOrThrow: ReturnType<typeof vi.fn>;
         findFirst: ReturnType<typeof vi.fn>;
         findMany: ReturnType<typeof vi.fn>;
         count: ReturnType<typeof vi.fn>;
         create: ReturnType<typeof vi.fn>;
         update: ReturnType<typeof vi.fn>;
+        updateMany: ReturnType<typeof vi.fn>;
         delete: ReturnType<typeof vi.fn>;
+        deleteMany: ReturnType<typeof vi.fn>;
       };
       jobSkill: {
         deleteMany: ReturnType<typeof vi.fn>;
@@ -87,6 +91,10 @@ describe('JobsService', () => {
         },
         company: {
           findUnique: vi.fn(),
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'comp-1',
+            verificationStatus: VerificationStatus.VERIFIED,
+          }),
         },
         careerCategory: {
           findUnique: vi.fn(),
@@ -96,12 +104,15 @@ describe('JobsService', () => {
         },
         job: {
           findUnique: vi.fn(),
+          findUniqueOrThrow: vi.fn(),
           findFirst: vi.fn(),
           findMany: vi.fn(),
           count: vi.fn(),
           create: vi.fn(),
           update: vi.fn(),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           delete: vi.fn(),
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         jobSkill: {
           deleteMany: vi.fn(),
@@ -325,7 +336,7 @@ describe('JobsService', () => {
         status: JobStatus.DRAFT,
       });
       mockDb.client.skill.findMany.mockResolvedValue([{ id: 'skill-1' }]);
-      mockDb.client.job.update.mockResolvedValue({
+      mockDb.client.job.findUniqueOrThrow.mockResolvedValue({
         id: 'job-1',
         title: 'New Title',
       });
@@ -348,6 +359,23 @@ describe('JobsService', () => {
           entityId: 'job-1',
         }),
       });
+    });
+
+    it('throws BadRequestException if job status changed concurrently before update completes', async () => {
+      mockDb.client.employerProfile.findUnique.mockResolvedValue(
+        mockEmployerWithCompany,
+      );
+      mockDb.client.job.findUnique.mockResolvedValue({
+        id: 'job-1',
+        companyId: 'comp-1',
+        status: JobStatus.DRAFT,
+      });
+      // Simulate race condition where job became PUBLISHED between read and write
+      mockDb.client.job.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.updateJob('user-1', 'job-1', { title: 'New Title' }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -402,7 +430,7 @@ describe('JobsService', () => {
         companyId: 'comp-1',
         status: JobStatus.DRAFT,
       });
-      mockDb.client.job.update.mockResolvedValue({
+      mockDb.client.job.findUniqueOrThrow.mockResolvedValue({
         id: 'job-1',
         status: JobStatus.PENDING_APPROVAL,
       });
@@ -440,7 +468,7 @@ describe('JobsService', () => {
         companyId: 'comp-1',
         status: JobStatus.PENDING_APPROVAL,
       });
-      mockDb.client.job.update.mockResolvedValue({
+      mockDb.client.job.findUniqueOrThrow.mockResolvedValue({
         id: 'job-1',
         status: JobStatus.DRAFT,
       });
@@ -467,7 +495,7 @@ describe('JobsService', () => {
         companyId: 'comp-1',
         status: JobStatus.PUBLISHED,
       });
-      mockDb.client.job.update.mockResolvedValue({
+      mockDb.client.job.findUniqueOrThrow.mockResolvedValue({
         id: 'job-1',
         status: JobStatus.CLOSED,
       });
@@ -513,8 +541,8 @@ describe('JobsService', () => {
       const result = await service.deleteDraft('user-1', 'job-1');
 
       expect(result.success).toBe(true);
-      expect(mockDb.client.job.delete).toHaveBeenCalledWith({
-        where: { id: 'job-1' },
+      expect(mockDb.client.job.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'job-1', companyId: 'comp-1', status: JobStatus.DRAFT },
       });
       expect(mockDb.client.auditLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -600,7 +628,7 @@ describe('JobsService', () => {
         companyId: 'comp-1',
         company: { employers: [{ userId: 'emp-user-1' }] },
       });
-      mockDb.client.job.update.mockResolvedValue({
+      mockDb.client.job.findUniqueOrThrow.mockResolvedValue({
         id: 'job-1',
         status: JobStatus.PUBLISHED,
         publishedAt: new Date(),
@@ -636,7 +664,7 @@ describe('JobsService', () => {
         companyId: 'comp-1',
         company: { employers: [{ userId: 'emp-user-1' }] },
       });
-      mockDb.client.job.update.mockResolvedValue({
+      mockDb.client.job.findUniqueOrThrow.mockResolvedValue({
         id: 'job-1',
         status: JobStatus.REJECTED,
         publishedAt: null,
@@ -663,6 +691,24 @@ describe('JobsService', () => {
           body: expect.stringContaining(reason),
         }),
       });
+    });
+
+    it('throws BadRequestException if job status changed concurrently during admin moderation', async () => {
+      mockDb.client.job.findUnique.mockResolvedValue({
+        id: 'job-1',
+        title: 'Backend Engineer',
+        status: JobStatus.PENDING_APPROVAL,
+        companyId: 'comp-1',
+        company: { employers: [{ userId: 'emp-user-1' }] },
+      });
+      // Simulate another admin having approved or rejected the job in parallel
+      mockDb.client.job.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.adminModerate('admin-1', 'job-1', {
+          status: JobStatus.PUBLISHED,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

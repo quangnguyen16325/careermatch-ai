@@ -77,6 +77,9 @@ pnpm typecheck        # TypeScript checks
 pnpm infra:up         # start PostgreSQL and Redis
 pnpm infra:down       # stop local infrastructure
 pnpm db:validate      # validate Prisma schema
+pnpm db:seed          # idempotent database seed (preserves existing data)
+# To perform a clean reset & re-seed on a disposable database:
+# SEED_RESET=1 pnpm db:seed
 ```
 
 ## Repository conventions
