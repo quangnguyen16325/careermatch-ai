@@ -26,6 +26,9 @@ import { ApplicationsService } from './applications.service.js';
 import { ApplyJobDto } from './dto/apply-job.dto.js';
 import { WithdrawApplicationDto } from './dto/withdraw-application.dto.js';
 import { QueryMyApplicationsDto } from './dto/query-applications.dto.js';
+import { QueryJobApplicationsDto } from './dto/query-job-applications.dto.js';
+import { ShortlistCandidateDto } from './dto/shortlist-candidate.dto.js';
+import { ReviewCandidateDto } from './dto/review-candidate.dto.js';
 
 @ApiTags('applications')
 @Controller('applications')
@@ -102,6 +105,67 @@ export class ApplicationsController {
     @Query() query: QueryMyApplicationsDto,
   ) {
     return this.applicationsService.getMyApplications(user.id, query);
+  }
+
+  @Get()
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer list applications with optional filters' })
+  @ApiResponse({ status: 200, description: 'Paginated list of job applications' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  getEmployerApplications(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QueryJobApplicationsDto,
+  ) {
+    return this.applicationsService.getEmployerApplications(
+      user.id,
+      query,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/review')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer mark application as REVIEWING' })
+  @ApiResponse({ status: 200, description: 'Application marked as reviewing' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  reviewApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ReviewCandidateDto,
+  ) {
+    return this.applicationsService.reviewApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
+  }
+
+  @Post(':id/shortlist')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer shortlist candidate application' })
+  @ApiResponse({ status: 200, description: 'Application shortlisted successfully' })
+  @ApiResponse({ status: 400, description: 'INVALID_STATE_TRANSITION' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'APPLICATION_NOT_FOUND' })
+  shortlistApplication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ShortlistCandidateDto,
+  ) {
+    return this.applicationsService.shortlistApplication(
+      user.id,
+      id,
+      dto,
+      user.role as UserRole,
+    );
   }
 
   @Get(':id')

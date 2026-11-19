@@ -17,6 +17,9 @@ import { canTransitionApplication } from '../recruitment/recruitment-transitions
 import { ApplyJobDto } from './dto/apply-job.dto.js';
 import { WithdrawApplicationDto } from './dto/withdraw-application.dto.js';
 import { QueryMyApplicationsDto } from './dto/query-applications.dto.js';
+import { QueryJobApplicationsDto } from './dto/query-job-applications.dto.js';
+import { ShortlistCandidateDto } from './dto/shortlist-candidate.dto.js';
+import { ReviewCandidateDto } from './dto/review-candidate.dto.js';
 
 @Injectable()
 export class ApplicationsService {
@@ -35,6 +38,29 @@ export class ApplicationsService {
     }
 
     return student;
+  }
+
+  private async getEmployerProfile(userId: string) {
+    const employer = await this.db.client.employerProfile.findUnique({
+      where: { userId },
+      include: { company: true },
+    });
+
+    if (!employer) {
+      throw new NotFoundException({
+        code: 'EMPLOYER_PROFILE_NOT_FOUND',
+        message: 'Employer profile does not exist for this account',
+      });
+    }
+
+    if (!employer.companyId || !employer.company) {
+      throw new BadRequestException({
+        code: 'COMPANY_PROFILE_REQUIRED',
+        message: 'You must be associated with a company to perform this action',
+      });
+    }
+
+    return employer;
   }
 
   async applyForJob(studentUserId: string, jobId: string, dto: ApplyJobDto) {
@@ -438,5 +464,403 @@ export class ApplicationsService {
     }
 
     return application;
+  }
+
+  async getEmployerApplications(
+    employerUserId: string,
+    query: QueryJobApplicationsDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ApplicationWhereInput = {};
+
+    if (userRole === UserRole.EMPLOYER) {
+      const employer = await this.getEmployerProfile(employerUserId);
+      where.job = {
+        companyId: employer.companyId!,
+      };
+
+      if (query.jobId) {
+        const job = await this.db.client.job.findUnique({
+          where: { id: query.jobId },
+          select: { companyId: true },
+        });
+
+        if (!job) {
+          throw new NotFoundException({
+            code: 'JOB_NOT_FOUND',
+            message: 'Job not found',
+          });
+        }
+
+        if (job.companyId !== employer.companyId) {
+          throw new ForbiddenException({
+            code: 'FORBIDDEN',
+            message: 'You do not have permission to view applicants for this job',
+          });
+        }
+
+        where.jobId = query.jobId;
+      }
+    } else if (query.jobId) {
+      where.jobId = query.jobId;
+    }
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.search) {
+      const search = query.search;
+      where.student = {
+        OR: [
+          { fullName: { contains: search, mode: 'insensitive' } },
+          { user: { email: { contains: search, mode: 'insensitive' } } },
+        ],
+      };
+    }
+
+    const [total, data] = await Promise.all([
+      this.db.client.application.count({ where }),
+      this.db.client.application.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { submittedAt: 'desc' },
+        include: {
+          student: {
+            include: {
+              user: {
+                select: { id: true, email: true },
+              },
+              skills: { include: { skill: true } },
+              cvs: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
+          job: {
+            include: {
+              company: true,
+              category: true,
+            },
+          },
+          history: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          interviews: {
+            orderBy: { scheduledAt: 'desc' },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async getJobApplications(
+    employerUserId: string,
+    jobId: string,
+    query: QueryJobApplicationsDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    const combinedQuery = new QueryJobApplicationsDto();
+    combinedQuery.page = query.page;
+    combinedQuery.pageSize = query.pageSize;
+    combinedQuery.status = query.status;
+    combinedQuery.search = query.search;
+    combinedQuery.jobId = jobId;
+
+    return this.getEmployerApplications(
+      employerUserId,
+      combinedQuery,
+      userRole,
+    );
+  }
+
+  async reviewApplication(
+    employerUserId: string,
+    applicationId: string,
+    dto?: ReviewCandidateDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    let employerCompanyId: string | undefined;
+    if (userRole === UserRole.EMPLOYER) {
+      const employer = await this.getEmployerProfile(employerUserId);
+      employerCompanyId = employer.companyId!;
+    }
+
+    const application = await this.db.client.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        job: {
+          include: {
+            company: {
+              include: {
+                employers: { select: { userId: true } },
+              },
+            },
+          },
+        },
+        student: {
+          include: {
+            user: { select: { id: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException({
+        code: 'APPLICATION_NOT_FOUND',
+        message: 'Application not found',
+      });
+    }
+
+    if (
+      userRole === UserRole.EMPLOYER &&
+      application.job.companyId !== employerCompanyId
+    ) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to review this application',
+      });
+    }
+
+    if (application.status === ApplicationStatus.REVIEWING) {
+      return application;
+    }
+
+    const isValidTransition = canTransitionApplication(
+      application.status,
+      ApplicationStatus.REVIEWING,
+      userRole,
+    );
+
+    if (!isValidTransition) {
+      throw new BadRequestException({
+        code: 'INVALID_STATE_TRANSITION',
+        message: `Cannot transition application from ${application.status} to REVIEWING`,
+      });
+    }
+
+    return this.db.client.$transaction(async (tx) => {
+      const updateResult = await tx.application.updateMany({
+        where: {
+          id: applicationId,
+          status: ApplicationStatus.SUBMITTED,
+        },
+        data: {
+          status: ApplicationStatus.REVIEWING,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Application status has changed or cannot be reviewed',
+        });
+      }
+
+      const reason = dto?.note ?? 'Employer started reviewing candidate profile.';
+      await tx.applicationStatusHistory.create({
+        data: {
+          applicationId,
+          fromStatus: application.status,
+          toStatus: ApplicationStatus.REVIEWING,
+          reason,
+          changedById: employerUserId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: employerUserId,
+          action: 'APPLICATION_REVIEWED',
+          entity: 'Application',
+          entityId: applicationId,
+          metadata: {
+            previousStatus: application.status,
+            newStatus: ApplicationStatus.REVIEWING,
+            note: dto?.note ?? null,
+          },
+        },
+      });
+
+      return tx.application.findUniqueOrThrow({
+        where: { id: applicationId },
+        include: {
+          job: {
+            include: {
+              company: true,
+              category: true,
+              skills: { include: { skill: true } },
+            },
+          },
+          student: true,
+          history: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
+    });
+  }
+
+  async shortlistApplication(
+    employerUserId: string,
+    applicationId: string,
+    dto?: ShortlistCandidateDto,
+    userRole: UserRole = UserRole.EMPLOYER,
+  ) {
+    let employerCompanyId: string | undefined;
+    if (userRole === UserRole.EMPLOYER) {
+      const employer = await this.getEmployerProfile(employerUserId);
+      employerCompanyId = employer.companyId!;
+    }
+
+    const application = await this.db.client.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        job: {
+          include: {
+            company: {
+              include: {
+                employers: { select: { userId: true } },
+              },
+            },
+          },
+        },
+        student: {
+          include: {
+            user: { select: { id: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException({
+        code: 'APPLICATION_NOT_FOUND',
+        message: 'Application not found',
+      });
+    }
+
+    if (
+      userRole === UserRole.EMPLOYER &&
+      application.job.companyId !== employerCompanyId
+    ) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to shortlist this candidate',
+      });
+    }
+
+    const isValidTransition = canTransitionApplication(
+      application.status,
+      ApplicationStatus.SHORTLISTED,
+      userRole,
+    );
+
+    if (!isValidTransition) {
+      throw new BadRequestException({
+        code: 'INVALID_STATE_TRANSITION',
+        message: `Cannot shortlist candidate from ${application.status} status`,
+      });
+    }
+
+    return this.db.client.$transaction(async (tx) => {
+      const updateResult = await tx.application.updateMany({
+        where: {
+          id: applicationId,
+          status: {
+            in: [ApplicationStatus.SUBMITTED, ApplicationStatus.REVIEWING],
+          },
+        },
+        data: {
+          status: ApplicationStatus.SHORTLISTED,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (updateResult.count === 0) {
+        throw new BadRequestException({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'Application status has changed or cannot be shortlisted',
+        });
+      }
+
+      const reason =
+        dto?.note ??
+        dto?.reason ??
+        'Candidate profile shortlisted for interview consideration.';
+
+      await tx.applicationStatusHistory.create({
+        data: {
+          applicationId,
+          fromStatus: application.status,
+          toStatus: ApplicationStatus.SHORTLISTED,
+          reason,
+          changedById: employerUserId,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          userId: application.student.userId,
+          type: NotificationType.APPLICATION_SHORTLISTED,
+          title: 'Application Shortlisted',
+          body: `${application.job.company.name} has shortlisted your application for ${application.job.title}.`,
+          data: {
+            jobId: application.job.id,
+            applicationId: application.id,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: employerUserId,
+          action: 'APPLICATION_SHORTLISTED',
+          entity: 'Application',
+          entityId: applicationId,
+          metadata: {
+            previousStatus: application.status,
+            newStatus: ApplicationStatus.SHORTLISTED,
+            reason,
+          },
+        },
+      });
+
+      return tx.application.findUniqueOrThrow({
+        where: { id: applicationId },
+        include: {
+          job: {
+            include: {
+              company: true,
+              category: true,
+              skills: { include: { skill: true } },
+            },
+          },
+          student: true,
+          history: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
+    });
   }
 }

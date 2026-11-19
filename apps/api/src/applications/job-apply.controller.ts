@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -23,6 +25,7 @@ import {
 import { UserRole } from '../generated/prisma/enums.js';
 import { ApplicationsService } from './applications.service.js';
 import { ApplyJobDto } from './dto/apply-job.dto.js';
+import { QueryJobApplicationsDto } from './dto/query-job-applications.dto.js';
 
 @ApiTags('applications')
 @Controller('jobs')
@@ -47,5 +50,25 @@ export class JobApplyController {
     @Body() dto: ApplyJobDto,
   ) {
     return this.applicationsService.applyForJob(user.id, jobId, dto);
+  }
+
+  @Get(':jobId/applications')
+  @Roles(UserRole.EMPLOYER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Employer list applications for a specific job' })
+  @ApiResponse({ status: 200, description: 'Paginated applications for the job' })
+  @ApiResponse({ status: 401, description: 'AUTHENTICATION_REQUIRED' })
+  @ApiResponse({ status: 403, description: 'FORBIDDEN' })
+  @ApiResponse({ status: 404, description: 'JOB_NOT_FOUND' })
+  getJobApplications(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jobId') jobId: string,
+    @Query() query: QueryJobApplicationsDto,
+  ) {
+    return this.applicationsService.getJobApplications(
+      user.id,
+      jobId,
+      query,
+      user.role as UserRole,
+    );
   }
 }

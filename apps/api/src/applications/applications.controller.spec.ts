@@ -11,6 +11,9 @@ describe('ApplicationsController', () => {
     withdrawApplication: ReturnType<typeof vi.fn>;
     getMyApplications: ReturnType<typeof vi.fn>;
     getApplicationById: ReturnType<typeof vi.fn>;
+    getEmployerApplications: ReturnType<typeof vi.fn>;
+    reviewApplication: ReturnType<typeof vi.fn>;
+    shortlistApplication: ReturnType<typeof vi.fn>;
   };
 
   const mockStudent = {
@@ -33,6 +36,9 @@ describe('ApplicationsController', () => {
       withdrawApplication: vi.fn(),
       getMyApplications: vi.fn(),
       getApplicationById: vi.fn(),
+      getEmployerApplications: vi.fn(),
+      reviewApplication: vi.fn(),
+      shortlistApplication: vi.fn(),
     };
 
     controller = new ApplicationsController(
@@ -112,6 +118,59 @@ describe('ApplicationsController', () => {
       expect(service.getMyApplications).toHaveBeenCalledWith(
         mockStudent.id,
         query,
+      );
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('getEmployerApplications', () => {
+    it('delegates to service.getEmployerApplications with user role', async () => {
+      const mockResult = { data: [], meta: { total: 0, page: 1, pageSize: 10, totalPages: 0 } };
+      service.getEmployerApplications.mockResolvedValue(mockResult);
+
+      const query = { page: 1, pageSize: 10, status: ApplicationStatus.SUBMITTED };
+      const result = await controller.getEmployerApplications(mockEmployer, query);
+
+      expect(service.getEmployerApplications).toHaveBeenCalledWith(
+        mockEmployer.id,
+        query,
+        mockEmployer.role,
+      );
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('reviewApplication', () => {
+    it('delegates to service.reviewApplication', async () => {
+      const mockResult = { id: 'app-1', status: ApplicationStatus.REVIEWING };
+      service.reviewApplication.mockResolvedValue(mockResult);
+
+      const dto = { note: 'Checking CV' };
+      const result = await controller.reviewApplication(mockEmployer, 'app-1', dto);
+
+      expect(service.reviewApplication).toHaveBeenCalledWith(
+        mockEmployer.id,
+        'app-1',
+        dto,
+        mockEmployer.role,
+      );
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('shortlistApplication', () => {
+    it('delegates to service.shortlistApplication', async () => {
+      const mockResult = { id: 'app-1', status: ApplicationStatus.SHORTLISTED };
+      service.shortlistApplication.mockResolvedValue(mockResult);
+
+      const dto = { note: 'Top candidate' };
+      const result = await controller.shortlistApplication(mockEmployer, 'app-1', dto);
+
+      expect(service.shortlistApplication).toHaveBeenCalledWith(
+        mockEmployer.id,
+        'app-1',
+        dto,
+        mockEmployer.role,
       );
       expect(result).toBe(mockResult);
     });
