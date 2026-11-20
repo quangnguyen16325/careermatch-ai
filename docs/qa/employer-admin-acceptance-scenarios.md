@@ -1289,16 +1289,70 @@ Use these repository sources while adding detailed scenarios. If a source confli
 - `apps/api/prisma/schema.prisma` — persisted model definitions; not a route or workflow implementation checklist.
 - `docs/wbs-issue-map.json` — WBS-to-Issue traceability references; team baseline approval is pending as noted in `docs/project-baseline.md`.
 
-## 15. Review and completion checklist
+## 15. QA execution guide
 
-Before marking a scenario approved or verified:
+Use this procedure when executing a scenario. Record the execution separately from the scenario definition so that a draft expectation is not mistaken for an approved result.
 
-- Confirm its business rule and related issue with the requirement owner.
-- Confirm actor role, ownership scope, initial state, permitted transition, validation, and error outcome.
-- Distinguish UI preview behavior from backend persistence and authorization.
-- Select a reproducible verification method and retain evidence.
-- Record any dependency that blocks API, integration, or browser verification.
-- Review the full matrix for gaps across positive, negative, and boundary cases.
-- For document changes, check scenario ID uniqueness, required fields, one traceability entry per scenario, and local Markdown links; run Prettier and `git diff --check`.
+1. Select a scenario by its business-area prefix and confirm its **Scenario status**. Ask the requirement owner about `Needs confirmation` scenarios before treating their expected result as an acceptance decision.
+2. Read the prerequisites and prepare test records that satisfy the stated starting state. Use synthetic test data; do not use real CVs or credentials in screenshots or logs.
+3. Record the target environment and verification target: frontend mock/preview, API, or an integrated end-to-end flow. Note the build/commit and relevant service configuration where available.
+4. Perform the **Given–When–Then** steps in order. For negative and boundary cases, vary only the condition under test where practical.
+5. Compare observable results with **Then** and **Expected result**, including response status/body, persisted state, visible feedback, and history only where the referenced contract requires them.
+6. Record the actual result, date, tester, environment, and evidence location. Redact tokens, personal data, and secrets.
+7. Mark the execution **Pass**, **Fail**, **Blocked**, or **Not Run**. A blocked or not-run scenario is not a pass; link the blocker or missing dependency.
 
-This framework itself does not make CM-065 or any related implementation issue Done. All five business areas now have draft scenarios, but requirement-owner approval and execution evidence remain pending. No Markdown-specific automated test harness is configured; the web Vitest suite targets application code, so document structure is checked with repeatable manual scripts rather than adding an unrelated test dependency or runner.
+### Verification target matters
+
+- **Frontend mock/preview:** verifies only local UI behavior and local state. It does not prove API persistence, backend validation, server authorization, notifications, or cross-user effects.
+- **API:** verifies the delivered endpoint and backend behavior using an approved test environment and suitable test credentials. A DTO, Prisma model, Swagger declaration, or source inspection alone is implementation evidence, not execution evidence.
+- **Integrated/browser flow:** verifies the actual frontend-to-API path. Record browser, viewport, session role, API environment, and evidence. Do not claim browser E2E unless it was run.
+- **Unit/controller/service test:** record the exact test command and test name. This can verify the covered code path but does not establish untested UI or deployment behavior.
+
+## 16. Evidence checklist
+
+Check an item only after the evidence exists and is linked from the execution record. The empty boxes below are intentional; this document does not claim these checks have been run.
+
+| Business area        | Evidence to retain                                                                                                                                                                                                                                    | Status                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Company Verification | API/controller/service test result for list, validation, allowed and stale transitions; sanitized request/response evidence for API execution; browser evidence only after UI integration. Include the tax-code decision or keep `AC-CV-010` blocked. | [ ] Pending execution/approval                     |
+| Job Moderation       | API test evidence for supported moderation transitions and reason validation; sanitized response/state evidence; approved content-policy rubric for violation decisions; browser evidence only after UI integration.                                  | [ ] Pending execution/approval                     |
+| Candidate Review     | Once an application API exists, test evidence for owner scoping, permitted transitions, private CV access, and failure paths; until then, capture preview behavior separately and label it mock.                                                      | [ ] Blocked on API/contract for persisted workflow |
+| Account Management   | For preview, capture local search/action behavior and the visible demo/preview notice. For real lock/unlock, retain approved policy, API authorization and reason/audit tests, plus before/after state evidence.                                      | [ ] Preview only; API evidence pending             |
+| Report Management    | For preview, retain UI/unit evidence for filters, actions, local history, and derived analytics. For a real workflow, retain approved status/note/history contract, Admin authorization tests, API results, and persisted before/after evidence.      | [ ] Preview only; API evidence pending             |
+
+Evidence may be a test report, CI run, sanitized API result, screenshot, or link to the relevant implementation and test. A source link is not a substitute for an execution record when the scenario claims runtime verification.
+
+## 17. Open questions and approval register
+
+The register tracks decisions needed to turn draft scenarios into approved acceptance criteria. Status remains pending until the named decision owner confirms it; repository implementation evidence does not itself grant product approval.
+
+| Open question                                                                                                                                         | Related scenarios                                                                                                           | Current source/evidence                                                                                                                                                                        | Decision owner                                    | Approval status      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------- |
+| At which company-profile step is a tax code mandatory, and what validation applies?                                                                   | `AC-CV-010`, `AC-CV-011`                                                                                                    | `CreateCompanyDto` permits omission while the verification state specification requires a valid code before verification setup.                                                                | Product/business requirement owner with API owner | Pending confirmation |
+| Which company verification states/transitions are intended business policy, including revocation, re-verification, and employer resubmission effects? | `AC-CV-003`–`AC-CV-007`, `AC-CV-010`                                                                                        | API supports documented Admin transitions; resubmission and consequences also appear in design material.                                                                                       | Product/business requirement owner                | Pending confirmation |
+| What approved content rubric and violation outcomes govern job moderation, beyond the implemented status transitions?                                 | `AC-JM-004`–`AC-JM-008`, `AC-JM-013`                                                                                        | API transition implementation and preview controls exist; violation classification/policy is not fully specified.                                                                              | Trust & safety / product owner                    | Pending confirmation |
+| Which Employer role and ownership checks permit viewing candidate details or private CV content?                                                      | `AC-CR-006`, `AC-CR-008`                                                                                                    | State design assigns review to the job-owning Employer; no application API is delivered, and current ownership helpers do not grant Employer CV access.                                        | Product/privacy owner and API owner               | Pending confirmation |
+| Is AI ranking available, reproducible, explainable, and advisory, and can an Employer remove a candidate from a shortlist?                            | `AC-CR-015`, `AC-CR-016`                                                                                                    | AI matching is advisory in project/API material; Employer ranking and shortlist reversal controls/contracts are not established.                                                               | Product/AI owner                                  | Pending confirmation |
+| What are the allowed Admin account lock/unlock states, required reason, audit history, and reactivation effects?                                      | `AC-AM-004`–`AC-AM-010`                                                                                                     | Preview mutates local state; no account-management API/action contract exists. Auth distinguishes pending verification and suspended sessions but does not define Admin actions.               | Product/security owner and API owner              | Pending confirmation |
+| What report statuses, transition permissions, note rules, history retention/actor attribution, and target-resource effects are approved?              | `AC-RM-004`–`AC-RM-014`                                                                                                     | Preview has local triage/history; Prisma fields are free-form and no report API, status enum, or history model is delivered.                                                                   | Product/trust & safety owner and API owner        | Pending confirmation |
+| Which frontend preview actions are expected to map to real API operations, and what are the request/response and failure contracts?                   | `AC-CV-002`–`AC-CV-014`, `AC-JM-001`–`AC-JM-013`, `AC-CR-001`–`AC-CR-018`, `AC-AM-001`–`AC-AM-010`, `AC-RM-001`–`AC-RM-014` | Current Employer/Admin business screens use mock data; company/job APIs exist but are not integrated. Candidate, Admin account, and report APIs are not delivered in the referenced API guide. | Product owner and frontend/API owners             | Pending confirmation |
+
+## 18. Completion and PR checklist
+
+Use this checklist when reviewing the CM-065 documentation change and preparing its PR. A checked item needs repository or execution evidence.
+
+- [ ] Exactly 69 scenarios are present: 14 Company Verification, 13 Job Moderation, 18 Candidate Review, 10 Account Management, and 14 Report Management.
+- [ ] Scenario IDs are unique; each scenario contains role, type, status, implementation status, prerequisites, Given, When, Then, expected result, reference, verification method, and evidence field.
+- [ ] Traceability contains one valid entry per scenario; no missing or dangling IDs.
+- [ ] Validation Matrix references existing scenario IDs and distinguishes implemented API validation from preview-only validation and unresolved policy.
+- [ ] Authorization Matrix distinguishes server-enforced authorization from frontend navigation/preview behavior.
+- [ ] State-transition coverage cites only sourced states and transitions and records unresolved items.
+- [ ] Cross-workflow coverage does not claim unverified integration or side effects.
+- [ ] Evidence checklist remains unchecked until actual execution evidence is attached.
+- [ ] Open Questions register records the listed unresolved decisions without marking them approved.
+- [ ] Markdown formatting, local links, scenario structure, matrix references, and `git diff --check` pass.
+- [ ] No business logic, API, schema, generated output, or unrelated issue files are included.
+- [ ] PR description summarizes scope, all five areas, 69 scenarios, QA matrices, checks, mock/API limitations, and links `Refs #65` (not `Closes #65` unless closure is approved).
+- [ ] Working tree is clean after the commit; branch and commit range are reviewed before PR creation.
+
+This framework does not make CM-065 or any related implementation issue Done. All five areas have draft scenarios; requirement-owner approval and execution evidence remain pending. No Markdown-specific automated test harness is configured; the web Vitest suite targets application code, so document structure is checked with repeatable scripts rather than adding an unrelated test dependency or runner.
