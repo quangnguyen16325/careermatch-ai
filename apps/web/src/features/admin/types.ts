@@ -1,4 +1,10 @@
-export type AdminSection = "Dashboard" | "Users" | "Employers" | "Job moderation" | "Reports";
+export type AdminSection =
+  | "Dashboard"
+  | "Users"
+  | "Employers"
+  | "Company verification"
+  | "Job moderation"
+  | "Reports";
 
 export type AdminRole = "Student" | "Employer" | "Admin";
 export type AccountStatus = "Active" | "Suspended" | "Pending";

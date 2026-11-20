@@ -3,6 +3,7 @@ import { AdminLayout } from "../components/AdminLayout";
 import { AdminNotice } from "../components/AdminNotice";
 import { mockAdminActivities, mockAdminEmployers, mockAdminReports, mockAdminUsers, mockModerationJobs } from "../data/mockAdminData";
 import { AdminDashboard } from "./AdminDashboard";
+import { CompanyVerificationQueuePage } from "./CompanyVerificationQueuePage";
 import { EmployerManagementPage } from "./EmployerManagementPage";
 import { JobModerationPage } from "./JobModerationPage";
 import { ReportManagementPage } from "./ReportManagementPage";
@@ -63,6 +64,9 @@ function AdminWorkspacePage({ loadError, loading = false }: AdminWorkspacePagePr
       break;
     case "Employers":
       section = <EmployerManagementPage employers={employers} onStatusChange={updateEmployerStatus} />;
+      break;
+    case "Company verification":
+      section = <CompanyVerificationQueuePage />;
       break;
     case "Job moderation":
       section = <JobModerationPage jobs={jobs} onStatusChange={updateJobStatus} />;
