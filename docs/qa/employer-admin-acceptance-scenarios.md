@@ -1,7 +1,7 @@
 # Employer and Admin Acceptance Scenarios — CM-065
 
 **Issue:** [CM-065 / #65](https://github.com/quangnguyen16325/careermatch-ai/issues/65)
-**Document status:** Framework established; Company Verification, Job Moderation, and Candidate Review scenarios are drafted. Business approval and execution evidence remain pending.
+**Document status:** Framework established; Company Verification, Job Moderation, Candidate Review, Account Management, and Report Management scenarios are drafted. Business approval and execution evidence remain pending.
 **Scope:** Acceptance scenarios for Employer and Admin business workflows.
 
 ## 1. Purpose and scope
@@ -14,7 +14,7 @@ CM-065 defines a reviewable, traceable acceptance-scenario set for these busines
 4. Account Management.
 5. Report Management.
 
-Commit 1 established the format, identifiers, status vocabulary, and traceability table. Commits 2 and 3 add draft scenarios for Company Verification, Job Moderation, and Candidate Review. They do not decide unconfirmed business rules or claim that a mock frontend action is persisted by the API. Account Management and Report Management are reserved for later CM-065 commits.
+Commit 1 established the format, identifiers, status vocabulary, and traceability table. Commits 2–4 add draft scenarios for Company Verification, Job Moderation, Candidate Review, Account Management, and Report Management. They do not decide unconfirmed business rules or claim that a mock frontend action is persisted by the API.
 
 ### Implementation evidence vocabulary
 
@@ -771,61 +771,451 @@ These draft scenarios distinguish the Employer candidate-screen preview from the
 - **Verification method:** Agree API error envelope, then service/client tests and browser tests for 401/403/validation/conflict/5xx cases.
 - **Evidence:** API guide states application/interview APIs are not delivered in this slice; failure behavior unverified.
 
-## 7. Traceability table
+## 7. Account Management scenarios (Commit 4)
 
-This matrix links each drafted scenario to its requirement and evidence source. Account Management and Report Management remain coverage targets for later commits. Related issue numbers are traceability leads from the repository WBS map, not proof that their exact acceptance criteria were reviewed or approved. All scenarios below remain **Draft** unless marked **Needs confirmation**; none has execution evidence from this documentation change.
+These scenarios reflect the Admin UI and API/source tree present on the CM-065 branch. The account list and its actions use local mock state. The API has authentication/session routes and an `AccountStatus` model, but no Admin account-list or account-status-management controller/service was found. Do not treat session enforcement for suspended users as an Admin lock/unlock API.
 
-| Business Area        | Requirement (initial coverage target)                                                                             | Scenario ID        | Related Issue / specification                                                                                                                         | Implementation Status (repository evidence)                                                                                                                                          | Verification Method                                                                                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Company Verification | Admin lists and searches companies                                                                                | `AC-CV-001`        | CM-065 #65; WBS #69/#84; `AdminCompaniesController.findAll`; `QueryCompaniesDto`                                                                      | API implemented; frontend list is mock/preview; integration pending                                                                                                                  | Controller/service tests; API query tests; browser list/filter check after integration                                                                       |
-| Company Verification | Admin reviews the selected company details                                                                        | `AC-CV-002`        | CM-065 #65; `AdminCompaniesController.findAll`; `EmployerManagementPage`                                                                              | Frontend detail dialog is preview; API list returns company records; dedicated Admin detail route is not documented                                                                  | Browser detail-content check; confirm required review fields with business owner                                                                             |
-| Company Verification | Admin approves a pending company                                                                                  | `AC-CV-003`        | CM-065 #65; WBS #69/#84; `VerifyCompanyDto`; company transition table                                                                                 | API transition implemented; frontend action is preview; integration pending                                                                                                          | `CompaniesService` tests; API authorization/transition check; browser status and notification check after integration                                        |
-| Company Verification | Admin rejects a pending company with a valid reason                                                               | `AC-CV-004`        | CM-065 #65; `VerifyCompanyDto`; `CompaniesService.adminVerify`                                                                                        | API implemented; UI preview; integration pending                                                                                                                                     | Service validation tests and API request with reason                                                                                                         |
-| Company Verification | Empty, short, or too-long rejection reason is rejected                                                            | `AC-CV-005`        | CM-065 #65; `VerifyCompanyDto`; `CompaniesService.adminVerify`                                                                                        | API min/max constraints documented in code; frontend preview validation exists, end-to-end pending                                                                                   | DTO/service boundary tests (9/10/1000/1001 trimmed characters)                                                                                               |
-| Company Verification | Repeat or otherwise disallowed verification transition is rejected without changing status                        | `AC-CV-006`        | CM-065 #65; `canTransitionCompanyVerification`; `CompaniesService.adminVerify`                                                                        | API transition guard implemented; frontend does not call API                                                                                                                         | Transition/service tests; verify unchanged status and no duplicate side effects                                                                              |
-| Company Verification | Admin can revoke or re-verify only through supported transitions                                                  | `AC-CV-007`        | CM-065 #65; `recruitment-state-transitions.md`; `recruitment-api.md`                                                                                  | API supports `VERIFIED → REJECTED` and `REJECTED → VERIFIED`; frontend integration pending                                                                                           | Transition tests; confirm revocation policy and reason requirements with owner                                                                               |
-| Company Verification | Employer cannot access Admin company list or verification action                                                  | `AC-CV-008`        | CM-065 #65; `AdminCompaniesController`; authorization guide                                                                                           | API route is ADMIN-guarded; frontend role UI is not API authorization evidence                                                                                                       | API tests with EMPLOYER token expect 403                                                                                                                     |
-| Company Verification | Anonymous caller cannot access Admin company routes                                                               | `AC-CV-009`        | CM-065 #65; `AdminCompaniesController`; authorization guide                                                                                           | API route uses `AuthGuard`; frontend role UI is not API authorization evidence                                                                                                       | API requests without a session expect 401                                                                                                                    |
-| Company Verification | Company profile without a tax code follows an agreed verification prerequisite                                    | `AC-CV-010`        | CM-065 #65; `CreateCompanyDto`; company state transition specification                                                                                | **Needs confirmation:** DTO makes taxCode optional, while state transition specification says valid taxCode is required                                                              | Confirm product rule; then add DTO/service boundary test. Do not assert an outcome yet                                                                       |
-| Company Verification | Invalid company profile fields are rejected under DTO constraints                                                 | `AC-CV-011`        | CM-065 #65; `CreateCompanyDto`; `UpdateCompanyDto`                                                                                                    | API DTO constraints implemented; profile UI remains preview                                                                                                                          | DTO/API tests for name and taxCode boundaries and invalid types                                                                                              |
-| Company Verification | Unknown company ID returns not found                                                                              | `AC-CV-012`        | CM-065 #65; `CompaniesService.adminVerify`; Admin controller                                                                                          | API 404 `COMPANY_NOT_FOUND` documented; frontend integration pending                                                                                                                 | Service/API test using unknown company ID                                                                                                                    |
-| Company Verification | Unexpected verification failure is not shown as success                                                           | `AC-CV-013`        | CM-065 #65; `CompaniesService.adminVerify`; API error docs                                                                                            | **Needs confirmation:** feature-specific unexpected error envelope and UI retry/message behavior are not specified                                                                   | Agree safe failure behavior; controlled service failure test                                                                                                 |
-| Company Verification | Missing or unsupported verification status is rejected                                                            | `AC-CV-014`        | CM-065 #65; `VerifyCompanyDto`; app `ValidationPipe`                                                                                                  | DTO allows only `VERIFIED`/`REJECTED`; UI remains preview                                                                                                                            | API tests for missing and unsupported status values                                                                                                          |
-| Job Moderation       | Admin lists pending jobs with search, status, company, and pagination filters                                     | `AC-JM-001`        | CM-065 #65; WBS #72/#86; `AdminJobsController.findAll`; `QueryAdminJobsDto`                                                                           | API implemented; Admin UI filters are mock/preview; integration pending                                                                                                              | Controller/service tests; query boundaries; browser filters after integration                                                                                |
-| Job Moderation       | Admin reviews a selected listing and its available details                                                        | `AC-JM-002`        | CM-065 #65; `AdminJobsController.findAll`; `JobModerationPage`                                                                                        | Preview detail dialog exists; Admin API list includes job/company/category/skills; separate detail route not documented                                                              | Browser verifies displayed fields; reconcile required moderation checklist with policy                                                                       |
-| Job Moderation       | Admin approves a pending-approval job                                                                             | `AC-JM-003`        | CM-065 #65; WBS #72/#86; `ModerateJobDto`; `canTransitionJob`                                                                                         | API supports `PENDING_APPROVAL → PUBLISHED`; UI action is preview; integration pending                                                                                               | Job service/transition tests; API response and publication state check                                                                                       |
-| Job Moderation       | Admin rejects a pending-approval job with a valid reason                                                          | `AC-JM-004`        | CM-065 #65; `ModerateJobDto`; `JobsService.adminModerate`                                                                                             | API implemented; UI preview; integration pending                                                                                                                                     | Service tests with reason and persisted status; notification evidence if required                                                                            |
-| Job Moderation       | Rejection reason is required and bounded                                                                          | `AC-JM-005`        | CM-065 #65; `ModerateJobDto`; `JobsService.adminModerate`                                                                                             | API trims reason, requires at least 10 characters for REJECTED, and limits it to 1000; UI preview                                                                                    | DTO/service boundary tests (9/10/1000/1001 trimmed characters)                                                                                               |
-| Job Moderation       | Admin closes or rejects an already published job as an allowed moderation outcome                                 | `AC-JM-006`        | CM-065 #65; `recruitment-api.md`; `canTransitionJob`                                                                                                  | API allows `PUBLISHED → CLOSED` and `PUBLISHED → REJECTED`; rejection requires a reason. UI preview status choices differ.                                                           | Transition/service tests; confirm policy for closing versus rejecting a published listing                                                                    |
-| Job Moderation       | Admin action from an unsupported source state is rejected without mutation                                        | `AC-JM-007`        | CM-065 #65; `canTransitionJob`; `JobsService.adminModerate`                                                                                           | API rejects invalid transitions; UI preview actions currently use separate local statuses                                                                                            | API transition tests for DRAFT, REJECTED, and CLOSED; assert no state or side-effect update                                                                  |
-| Job Moderation       | “Flag listing” is treated as preview-only until an API status/contract is agreed                                  | `AC-JM-008`        | CM-065 #65; `JobModerationPage`; `ModerateJobDto`; `JobStatus`                                                                                        | UI has `Flagged` preview state; moderation DTO accepts only PUBLISHED, REJECTED, CLOSED. **API behavior pending confirmation/not implemented.**                                      | Verify preview label; confirm whether Flagged is a real business state before adding an API acceptance criterion                                             |
-| Job Moderation       | Employer cannot list or moderate jobs through Admin-only routes                                                   | `AC-JM-009`        | CM-065 #65; `AdminJobsController`; authorization guide                                                                                                | API routes are ADMIN-guarded; frontend preview is not access control                                                                                                                 | API requests with Employer token expect 403                                                                                                                  |
-| Job Moderation       | Anonymous caller cannot use Admin job routes                                                                      | `AC-JM-010`        | CM-065 #65; `AdminJobsController`; authorization guide                                                                                                | API routes use `AuthGuard`; frontend preview is not access control                                                                                                                   | API requests without a session expect 401                                                                                                                    |
-| Job Moderation       | Invalid/missing status or unsupported DTO values are rejected                                                     | `AC-JM-011`        | CM-065 #65; `ModerateJobDto`; `QueryAdminJobsDto`                                                                                                     | DTO validation is implemented; exact validation response envelope is framework-level                                                                                                 | API tests for missing/invalid status, bad enum, invalid page/pageSize/companyId and unknown fields per app ValidationPipe                                    |
-| Job Moderation       | Unknown job and concurrent stale moderation do not produce success                                                | `AC-JM-012`        | CM-065 #65; `JobsService.adminModerate`; `recruitment.database.mjs`                                                                                   | Not-found and conditional state update are implemented; generic infrastructure failure UX remains unspecified                                                                        | Service/database race test; unknown-ID test; assert no mutation or duplicate side effect                                                                     |
-| Job Moderation       | Moderation follows an approved content-policy rubric                                                              | `AC-JM-013`        | CM-065 #65; state-transition spec; approved content policy if available                                                                               | **Needs confirmation:** API accepts decisions, but the reviewed documents do not define an objective violation rubric                                                                | Policy owner approves rubric and examples before scenario approval                                                                                           |
-| Candidate Review     | Employer lists only applications for jobs owned by its company                                                    | `AC-CR-001`        | CM-065 #65; WBS #26/#75/#89; `recruitment-state-transitions.md`; `authorization.md`                                                                   | Frontend list is mock; owner-scoped application API is not evidenced                                                                                                                 | API integration with two company owners; browser verification after integration                                                                              |
-| Candidate Review     | Search applicants by name in the preview                                                                          | `AC-CR-002`        | CM-065 #65; `CandidateManagementDashboard`                                                                                                            | Name-only client-side search on fixtures; no API integration                                                                                                                         | Browser checks for case, whitespace, partial and no-match queries                                                                                            |
-| Candidate Review     | Filter by job position and application status                                                                     | `AC-CR-003`        | CM-065 #65; `CandidateManagementDashboard`; `ApplicationStatus` design                                                                                | Position/status filters operate on preview fixture labels                                                                                                                            | Browser checks for individual and combined filters and result count                                                                                          |
-| Candidate Review     | Sort applicants by application date                                                                               | `AC-CR-004`        | CM-065 #65; `CandidateManagementDashboard`                                                                                                            | Local sort by applied date, newest/oldest                                                                                                                                            | Compare preview order to fixture dates                                                                                                                       |
-| Candidate Review     | Distinguish an empty list from filters with no matches                                                            | `AC-CR-005`        | CM-065 #65; `CandidateManagementDashboard`; application API contract pending                                                                          | Preview has distinct empty and no-results messages; API empty response is unspecified                                                                                                | Empty fixture and no-match browser checks                                                                                                                    |
-| Candidate Review     | View selected candidate profile, application, resume preview and status history                                   | `AC-CR-006`        | CM-065 #65; `CandidateDetailDialog`; `recruitment-data-design.md`                                                                                     | Detail is fixture-based; resume is sample content; no profile/application API integration                                                                                            | Verify selected fixture fields, history, sample-resume label and dialog behavior                                                                             |
-| Candidate Review     | Handle missing or invalid candidate/application fields                                                            | `AC-CR-007`        | CM-065 #65; `recruitment-data-design.md`; application API contract pending                                                                            | **Needs confirmation:** response nullability and required review fields have no implemented API contract                                                                             | Approve schema/fallback rules, then test absent and malformed values                                                                                         |
-| Candidate Review     | Deny non-owner or unauthorized access to applications/private CVs                                                 | `AC-CR-008`        | CM-065 #65; `recruitment-state-transitions.md`; `authorization.md`                                                                                    | Ownership/privacy principles documented; application-specific guards/routes not evidenced                                                                                            | API tests for owner, other Employer, Student, Admin and anonymous after routes exist                                                                         |
-| Candidate Review     | Mark a submitted application as reviewing                                                                         | `AC-CR-009`        | CM-065 #65; `recruitment-state-transitions.md`; `CandidateManagementPage`                                                                             | Transition specified; preview `New → Reviewing` is local only; no application API evidenced                                                                                          | API ownership/transition/history tests and separate preview browser check                                                                                    |
-| Candidate Review     | Shortlist an eligible submitted or reviewing application                                                          | `AC-CR-010`        | CM-065 #65; WBS #26/#74/#75/#89/#109; `recruitment-state-transitions.md`; `CandidateDetailDialog`                                                     | Transition specified; UI changes mock state; API integration pending                                                                                                                 | API transition/history/notification tests and browser check after integration                                                                                |
-| Candidate Review     | Create an interview invitation for an eligible application                                                        | `AC-CR-011`        | CM-065 #65; WBS #27/#62/#76/#90/#91; `recruitment-state-transitions.md`; `CandidateDetailDialog`                                                      | Interview transition designed; preview “Schedule interview” only changes local state; interview API not evidenced                                                                    | Confirm API contract; then integration and browser invitation tests                                                                                          |
-| Candidate Review     | Accept an application after interview                                                                             | `AC-CR-012`        | CM-065 #65; `recruitment-state-transitions.md`; `CandidateDetailDialog`                                                                               | State transition specified; preview local update only; no application API evidenced                                                                                                  | API tests for terminal state, history, pending-interview effects and browser check after integration                                                         |
-| Candidate Review     | Reject an eligible application with optional feedback                                                             | `AC-CR-013`        | CM-065 #65; `recruitment-state-transitions.md`; `CandidateDetailDialog`                                                                               | **Needs confirmation:** state spec permits multiple source states, preview permits rejection only from Interview; API absent                                                         | Reconcile product policy and test each allowed source state after API contract                                                                               |
-| Candidate Review     | Reject invalid, terminal or stale application transitions without mutation                                        | `AC-CR-014`        | CM-065 #65; `recruitment-state-transitions.md`; application API contract pending                                                                      | Terminal states specified; API validation/conditional writes not evidenced                                                                                                           | Transition-matrix and concurrent-update tests once service exists                                                                                            |
-| Candidate Review     | Display ranking only under a reproducible approved scoring contract                                               | `AC-CR-015`        | CM-065 #65; WBS #74/#109; `recruitment-data-design.md` JobMatch; `wbs-issue-map.json`                                                                 | **Needs confirmation:** schema stores match scores; no ranking endpoint, algorithm contract or UI control evidenced                                                                  | Approve scoring inputs/version/explanation, then deterministic service/browser tests                                                                         |
-| Candidate Review     | Remove an application from shortlist under an approved transition rule                                            | `AC-CR-016`        | CM-065 #65; WBS #74/#75/#89; `recruitment-state-transitions.md`; `CandidateDetailDialog`                                                              | **Needs confirmation:** no reverse transition or preview action is specified                                                                                                         | Decide status/history/interview effects before adding transition and UI tests                                                                                |
-| Candidate Review     | Save candidate-review notes in preview only                                                                       | `AC-CR-017`        | CM-065 #65; `CandidateDetailDialog.saveNotes`; `CandidateManagementPage.saveNotes`                                                                    | Local state only; nonblank validation and 1200-character input limit; no notes API evidenced                                                                                         | Browser check blank/valid note, preview feedback and reload behavior                                                                                         |
-| Candidate Review     | Surface application API failures without false success                                                            | `AC-CR-018`        | CM-065 #65; `recruitment-api.md`; application/interview API contract pending                                                                          | **Needs confirmation:** no review API or network failure contract; synchronous preview cannot verify failures                                                                        | Agree error envelope then test 401/403/validation/conflict/5xx and preservation of confirmed state/input                                                     |
-| Account Management   | Admin searches accounts and performs approved account status actions with authorization and reason/feedback rules | `AC-AM-001…` — TBD | [CM-065 #65](https://github.com/quangnguyen16325/careermatch-ai/issues/65); WBS refs #29/#77/#94; [authorization guide](../authorization.md)          | Admin user screen is present, but uses frontend mock state. No Admin account-management API action is evidenced in the current feature API documentation.                            | Confirm allowed statuses, reasons and API contract; test Admin/forbidden access, validation, persistence and failure behavior when supported.                |
-| Report Management    | User report is triaged by an authorized Admin under an agreed status workflow, with handling history              | `AC-RM-001…` — TBD | [CM-065 #65](https://github.com/quangnguyen16325/careermatch-ai/issues/65); WBS refs #29/#78/#94/#95; [API integration contract](../api-contracts.md) | Admin report screen and actions use frontend preview state. A Report data model exists, but an implemented report-management API is not evidenced in the current API delivery guide. | Confirm report submission/moderation contract; test state transitions, authorization, history and failures at API level, then verify the Admin browser flow. |
+### AC-AM-001 — Admin views the account list and account details
 
-## 8. Source documents and implementation evidence
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: Admin page receives local fixture users; details dialog shows name, email, role, status, registration date, and location. No Admin account-list/details API is evidenced.
+- **Prerequisites:** Admin workspace is open with preview fixture accounts.
+- **Given:** The Users section contains account fixtures.
+- **When:** Admin views a user row and opens its details.
+- **Then:** The list/detail content corresponds to the selected fixture, and closing details does not change it.
+- **Expected result:** The UI preview is distinguishable from server-backed account records.
+- **Related issue/specification:** CM-065 #65; WBS #29/#77/#94; `UserManagementPage`; `AdminWorkspacePage`; `AccountStatus` in Prisma.
+- **Verification method:** Browser/manual check of list fields, selected detail fields, and close behavior; API integration check when a contract exists.
+- **Evidence:** Page receives `mockAdminUsers` from AdminWorkspacePage; no account-management API module exists in `apps/api/src`.
+
+### AC-AM-002 — Admin searches accounts by name or email
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: client-side search over fixture name and email.
+- **Prerequisites:** Preview includes accounts with distinct names and emails.
+- **Given:** Admin is on the Users section.
+- **When:** Admin enters a full or partial name/email query.
+- **Then:** The preview shows accounts whose combined name/email matches the trimmed query without case sensitivity and updates the result count.
+- **Expected result:** Search operates on the local fixture list only; pagination or server search is not implied.
+- **Related issue/specification:** CM-065 #65; WBS #29/#77/#94; `UserManagementPage`.
+- **Verification method:** Browser checks for name, email, case variation, whitespace, and no results.
+- **Evidence:** `UserManagementPage` filters `${name} ${email}` with trimmed lowercase query; execution pending.
+
+### AC-AM-003 — Admin filters accounts by role and account status
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: role and local status filters.
+- **Prerequisites:** Fixtures contain more than one role and status.
+- **Given:** Admin is viewing the Users section.
+- **When:** Admin selects a role, status, or both.
+- **Then:** The preview shows only accounts matching all selected criteria and reports the filtered count.
+- **Expected result:** The preview statuses `Active`, `Pending`, and `Suspended` are not silently treated as API response values; Prisma enum values are `ACTIVE`, `PENDING_VERIFICATION`, and `SUSPENDED`.
+- **Related issue/specification:** CM-065 #65; WBS #29/#77/#94; `UserManagementPage`; Prisma `AccountStatus` and `UserRole`.
+- **Verification method:** Browser checks for each filter and combined filters; map API enum values only after contract approval.
+- **Evidence:** UI filters fixtures; Prisma contains role/status enums; account-list API is absent.
+
+### AC-AM-004 — Admin suspends an active account in the preview
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: active fixture opens a confirmation dialog; confirm updates local status to `Suspended` and adds local activity/notice. The dialog has no reason field; no backend action is evidenced. Current success copy says the account “is now suspended” without identifying the preview boundary.
+- **Prerequisites:** Selected fixture has status `Active`.
+- **Given:** Admin selects Suspend for an active account.
+- **When:** Admin confirms the action.
+- **Then:** Local workspace state marks the fixture `Suspended` and shows preview feedback; cancel leaves it unchanged.
+- **Expected result:** This interaction does not claim that the persisted account, sessions, or access have changed.
+- **Related issue/specification:** CM-065 #65; `UserManagementPage`; `AdminActionDialog`; `AdminWorkspacePage.updateUserStatus`; Prisma `AccountStatus`.
+- **Verification method:** Browser/manual confirm/cancel checks and API tests after an approved management endpoint exists.
+- **Evidence:** State update is local in AdminWorkspacePage; suspended-session denial is separately implemented in `SessionService`.
+
+### AC-AM-005 — Admin reactivates a suspended account in the preview
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: selecting Unlock on a suspended fixture directly changes local status to `Active`, without a confirmation dialog or reason; no backend action is evidenced. Current success copy does not identify the preview boundary.
+- **Prerequisites:** Selected fixture has status `Suspended`.
+- **Given:** Admin selects Unlock for a suspended account.
+- **When:** The preview action runs.
+- **Then:** The local fixture status becomes `Active` and the workspace displays local feedback.
+- **Expected result:** Confirmation requirements, audit trail, session restoration, and persisted status behavior are not established by this UI action.
+- **Related issue/specification:** CM-065 #65; `UserManagementPage`; `AdminWorkspacePage.updateUserStatus`; Prisma `AccountStatus`.
+- **Verification method:** Preview browser check; backend behavior requires an approved API contract and tests.
+- **Evidence:** Suspended-row handler calls status update directly; no Admin account endpoint found.
+
+### AC-AM-006 — Admin activates a pending account in the preview
+
+- **Role:** Admin
+- **Type:** Boundary
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Mock/preview button says Activate for `Pending` and directly sets local status to `Active`; the meaning of Pending versus `PENDING_VERIFICATION` and whether Admin may bypass verification are not defined.
+- **Prerequisites:** Product defines whether pending verification can be overridden by an Admin and which prerequisites apply.
+- **Given:** A fixture is labeled `Pending`.
+- **When:** Admin selects Activate.
+- **Then:** The expected authorization, email-verification and account-state outcome remains pending policy confirmation; do not infer that activation bypass is valid.
+- **Expected result:** UI label is documented as preview behavior only until lifecycle policy is agreed.
+- **Related issue/specification:** CM-065 #65; `UserManagementPage`; Prisma `AccountStatus`; `docs/api-contracts.md` authentication account-state rules.
+- **Verification method:** Confirm product/security policy, then add API state/authorization tests and browser flow.
+- **Evidence:** Local handler changes the fixture; auth contract separately requires active, verified accounts for login; no Admin activation API exists.
+
+### AC-AM-007 — Required reason, validation, and lock/unlock policy are defined before action acceptance
+
+- **Role:** Admin
+- **Type:** Boundary
+- **Scenario status:** Needs confirmation
+- **Implementation status:** No reason contract exists for account actions. Current suspend dialog requests no reason; unlock/activate has no dialog. No endpoint/DTO validation exists.
+- **Prerequisites:** Requirement owner approves which actions require a reason, its length/visibility, and whether the same rule applies to suspension, reactivation, and activation.
+- **Given:** Admin attempts an account status action with a missing, blank, or invalid reason.
+- **When:** The approved account-management flow validates the request.
+- **Then:** Expected validation response and whether the action is blocked are defined by the approved contract, not assumed from unrelated company/report dialog behavior.
+- **Expected result:** CM-065 does not assert an undocumented reason requirement or code.
+- **Related issue/specification:** CM-065 #65; WBS #29/#77/#94; `UserManagementPage`; `AdminActionDialog`; API contract pending.
+- **Verification method:** Approve action/reason policy, then DTO/service boundary tests and UI validation tests.
+- **Evidence:** Existing AdminActionDialog is used without `requireReason` for account suspension; no account action DTO/service found.
+
+### AC-AM-008 — Non-Admin or unauthenticated caller cannot manage accounts
+
+- **Role:** Employer, Student, or unauthenticated user
+- **Type:** Negative
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Admin workspace has frontend role protection in the current source; no account-management endpoint exists to establish API authorization for list/actions.
+- **Prerequisites:** Caller session is Employer/Student or absent; Admin account-management route/API policy is defined.
+- **Given:** A non-Admin or anonymous caller attempts to read or change accounts.
+- **When:** Workspace routing and, if present, the API authorize the request.
+- **Then:** The route guard behavior is verified separately from API authorization; expected API status/body cannot be asserted without an account endpoint contract.
+- **Expected result:** Hiding the Admin menu or frontend route is not considered server-side authorization evidence.
+- **Related issue/specification:** CM-065 #65; WBS #29/#77/#94; `RoleProtectedLayout`; `docs/authorization.md`.
+- **Verification method:** Protected-layout tests plus API tests for role and anonymous callers after the management routes exist.
+- **Evidence:** Frontend role layout exists; API tree contains no Admin user-management controller/service.
+
+### AC-AM-009 — Unknown account, repeated action, and stale status are handled safely
+
+- **Role:** Admin
+- **Type:** Negative
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Preview only updates a fixture found by ID and does not report a missing account; there is no persisted account-action endpoint or concurrency contract.
+- **Prerequisites:** Account is absent, already has the target status, or changed after Admin loaded the list.
+- **Given:** Admin submits a status action against an unknown or stale account.
+- **When:** The operation is processed.
+- **Then:** Product/API contract must define not-found, invalid-transition, idempotency, and stale-write outcomes; no error code or success behavior is assumed here.
+- **Expected result:** A failed action must not be presented as a successful persisted update.
+- **Related issue/specification:** CM-065 #65; WBS #29/#77/#94; Prisma `User`; account-management API contract pending.
+- **Verification method:** Once defined, service tests for unknown IDs, duplicate actions, stale state, unchanged status, and side effects.
+- **Evidence:** Prisma has User/status fields; no Admin management service or tests found.
+
+### AC-AM-010 — Account action failure does not falsely update access or report success
+
+- **Role:** Admin
+- **Type:** Negative
+- **Scenario status:** Draft
+- **Implementation status:** No account-management network action exists in the UI; account status changes in AdminWorkspacePage are synchronous local preview updates whose success copy is not labeled preview. Authentication does reject suspended accounts with `ACCOUNT_SUSPENDED` on session checks.
+- **Prerequisites:** An approved account-management API exists and returns an authorization, validation, conflict, or service error.
+- **Given:** An account status operation fails.
+- **When:** The client receives the failure.
+- **Then:** The UI preserves the last confirmed server status, explains the error, and does not show server success; session-access behavior follows the existing auth contract independently.
+- **Expected result:** Current mock success notice must be labeled preview, and cannot validate failure handling for a future API.
+- **Related issue/specification:** CM-065 #65; `AdminWorkspacePage`; `docs/api-contracts.md`; `SessionService`; Prisma `AuthSession`.
+- **Verification method:** Client/service tests for agreed 401/403/validation/conflict/5xx contract and session check for suspended user.
+- **Evidence:** `SessionService` rejects suspended accounts; no account action API or failure-handling path found.
+
+## 8. Report Management scenarios (Commit 4)
+
+The Report Management components and mock report fixtures present in this branch are documented as preview behavior only. Prisma contains a `Report` model, but no report controller/service, report status enum, or report-history model/route was found. Do not attribute these behaviors to a CM-078 merge or claim persisted triage/analytics.
+
+### AC-RM-001 — Admin views report fixtures and report details
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: local report fixtures; details dialog shows target, reporter/contact, submitted date, status, details, and local history. The list does not display a report ID, and no report API is evidenced.
+- **Prerequisites:** Reports section is open with preview fixtures.
+- **Given:** Admin opens the reports list and selects a report.
+- **When:** The details dialog is displayed.
+- **Then:** The dialog displays fields from the selected fixture; closing without an action does not change local status/history.
+- **Expected result:** A displayed report is a sample fixture, not a server-fetched case.
+- **Related issue/specification:** CM-065 #65; WBS #29/#78/#94/#95; `ReportManagementPage`; Prisma `Report`.
+- **Verification method:** Browser/manual check of selected fixture, available fields, and close behavior.
+- **Evidence:** Page uses report props from `mockAdminReports`; no report API module found.
+
+### AC-RM-002 — Admin searches reports in the preview
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: client-side search over reporter name, target label, and reason.
+- **Prerequisites:** Fixtures have distinct reporter, target, and reason values.
+- **Given:** Admin is viewing the Reports section.
+- **When:** Admin enters a full or partial query.
+- **Then:** Matching fixtures are shown case-insensitively after trimming and the result count is updated.
+- **Expected result:** Search does not currently cover reporter email, report details, or a server query.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`.
+- **Verification method:** Browser checks for reporter, target, reason, case/whitespace variants, and no matches.
+- **Evidence:** Filter expression searches reporter, targetLabel, and reason only; execution pending.
+
+### AC-RM-003 — Admin filters reports by status
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview status filter over local `Open`, `Reviewing`, `Resolved`, and `Dismissed` values; backend `Report.status` is an unconstrained string.
+- **Prerequisites:** Fixtures contain reports in multiple preview statuses.
+- **Given:** Admin selects a status filter.
+- **When:** The report list is recalculated.
+- **Then:** Only fixtures with that exact preview status remain and the result count reflects them.
+- **Expected result:** Preview status labels are not treated as an approved persisted enum or API filter contract.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; Prisma `Report.status`.
+- **Verification method:** Browser checks each status and verifies matching rows/count; contract review before API assertions.
+- **Evidence:** Local filter and fixtures exist; schema status is `String` with default `OPEN`, without a report API.
+
+### AC-RM-004 — Admin starts review of an open report
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: Open → Reviewing after confirmation; a blank optional review note is replaced with a fixed preview note; local history is prepended. The parent success notice is not labeled as preview.
+- **Prerequisites:** Selected fixture is `Open`.
+- **Given:** Admin opens an Open report and chooses Mark reviewing.
+- **When:** Admin confirms the action.
+- **Then:** Local report status becomes Reviewing and local history receives the action note/date; cancellation leaves both unchanged.
+- **Expected result:** No server assignment, reviewer identity, audit event, or persisted timestamp is implied.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; `AdminActionDialog`; `AdminWorkspacePage.updateReportStatus`.
+- **Verification method:** Preview browser confirm/cancel checks and history inspection; API tests only after report action contract exists.
+- **Evidence:** Component updates local state and inserts history; no report operation endpoint found.
+
+### AC-RM-005 — Admin resolves a reviewing report with a valid note
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: Reviewing → Resolved; dialog requires a trimmed note of at least 10 characters, max 500; local history and dashboard preview update. Parent success copy is not labeled as preview.
+- **Prerequisites:** Selected fixture is Reviewing; note satisfies current UI dialog validation.
+- **Given:** Admin has reviewed a report and selected Resolve.
+- **When:** Admin confirms with a valid note.
+- **Then:** Local status changes to Resolved, history is prepended, list metrics/dashboard inputs update, and preview feedback is shown.
+- **Expected result:** The UI validation limit is a frontend rule only; Prisma has `resolvedAt` but no report action API/history contract.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; `AdminActionDialog`; `AdminWorkspacePage.updateReportStatus`; Prisma `Report`.
+- **Verification method:** Preview UI boundary tests for trimmed lengths and verify status/history/count changes; confirm API contract separately.
+- **Evidence:** Dialog checks nonblank with >=10 trimmed chars and maxLength 500; parent updates local state; no report service/history model found.
+
+### AC-RM-006 — Admin dismisses a reviewing report with a valid note
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: Reviewing → Dismissed using the same required-note dialog validation as resolution. Parent success copy is not labeled as preview.
+- **Prerequisites:** Selected fixture is Reviewing; dismissal note satisfies the current UI rule.
+- **Given:** Admin determines that the report should be dismissed.
+- **When:** Admin confirms Dismiss with a valid note.
+- **Then:** Local status and history update to Dismissed and preview feedback appears; cancel leaves the fixture unchanged.
+- **Expected result:** Dismissed status and note are not persisted to the server; the distinction from Resolved needs an approved report contract.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; `AdminActionDialog`; `AdminWorkspacePage.updateReportStatus`.
+- **Verification method:** Preview confirm/cancel checks and validation boundary checks; API tests after contract approval.
+- **Evidence:** Local action path and required-note UI exist; Prisma does not define Dismissed or a report history entity.
+
+### AC-RM-007 — Report action is canceled without changing status or history
+
+- **Role:** Admin
+- **Type:** Negative
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview confirmation dialogs expose Cancel; expected local behavior can be checked without an API.
+- **Prerequisites:** A report action dialog is open for an Open or Reviewing fixture.
+- **Given:** Admin has not confirmed the action.
+- **When:** Admin cancels/closes the confirmation dialog.
+- **Then:** The report retains its prior status and history; no action success notice is produced.
+- **Expected result:** Cancel must not call the local status-change callback.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; `AdminActionDialog`.
+- **Verification method:** Component/browser test for cancel and unchanged parent state.
+- **Evidence:** Cancel invokes dialog close callback; execution evidence pending.
+
+### AC-RM-008 — Terminal or unsupported report status does not expose an unapproved action
+
+- **Role:** Admin
+- **Type:** Boundary
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Preview shows status actions only for Open and Reviewing; backend has no report status enum or transition service.
+- **Prerequisites:** A report is Resolved, Dismissed, or has an unknown persisted status.
+- **Given:** Admin opens a terminal or unsupported report status.
+- **When:** The details dialog renders available actions.
+- **Then:** Current preview exposes no transition buttons for Resolved/Dismissed. Behavior for unknown API statuses and reopen/retriage policy remains undefined.
+- **Expected result:** Do not infer a reopen transition or accepted status list from fixture types.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; Prisma `Report.status`; report API contract pending.
+- **Verification method:** Browser check of terminal preview; define and test API state machine before integration.
+- **Evidence:** Component conditionally renders actions for Open/Reviewing only; persisted transition contract absent.
+
+### AC-RM-009 — Report reason/note validation follows the approved contract
+
+- **Role:** Admin
+- **Type:** Boundary
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Preview requires 10–500 characters for Resolved/Dismissed notes and allows an optional review note; no report API DTO or persistence validation exists.
+- **Prerequisites:** Requirement owner approves whether note is required per action, minimum/maximum length, and reason visibility.
+- **Given:** Admin submits a blank, whitespace-only, too-short, or over-limit note.
+- **When:** The action dialog validates input.
+- **Then:** Current preview blocks required notes shorter than 10 trimmed characters and textarea input is capped at 500; API acceptance behavior is pending contract approval.
+- **Expected result:** Do not treat UI-only validation as server validation or approved policy.
+- **Related issue/specification:** CM-065 #65; `AdminActionDialog`; report API contract pending.
+- **Verification method:** Preview tests at trimmed lengths 0/9/10/500 and approved API DTO/service tests after implementation.
+- **Evidence:** UI uses trim and minimum check and textarea maxLength 500; no report DTO/service exists.
+
+### AC-RM-010 — Report history is displayed as local preview data
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview history entries are displayed in the details dialog and prepended on local state changes; no report-history database model/API is evidenced.
+- **Prerequisites:** Fixture has one or more history entries or Admin performs a preview action.
+- **Given:** Admin opens report details.
+- **When:** The handling history is rendered after a local action.
+- **Then:** Entries display fixture/action status, date, and note in the local order; no authenticated actor or persistent audit trail is claimed.
+- **Expected result:** Distinguish mock history from Prisma `AuditLog` and from a future report-specific audit contract.
+- **Related issue/specification:** CM-065 #65; `ReportManagementPage`; `AdminWorkspacePage.updateReportStatus`; Prisma `Report` and `AuditLog`.
+- **Verification method:** Preview component test for initial entries and appended local action; API/audit test after contract exists.
+- **Evidence:** Local `history` field is part of frontend `AdminReport`; Prisma Report has no relation/history table.
+
+### AC-RM-011 — Report status counts and Admin dashboard values derive from preview data
+
+- **Role:** Admin
+- **Type:** Positive
+- **Scenario status:** Draft
+- **Implementation status:** Mock/preview: Reports page counts Open/Reviewing/Resolved/Dismissed; Admin Dashboard derives reported-job count from unresolved Job-target fixtures and recent activity from local state. No analytics API is evidenced.
+- **Prerequisites:** Report fixtures have varied target types/statuses.
+- **Given:** Admin opens Reports or the Admin Dashboard.
+- **When:** The screens calculate their summary values.
+- **Then:** Counts reflect the current local report array; after a confirmed preview action the relevant counts update from the same parent state. Admin Dashboard “Reported jobs” excludes resolved/dismissed and non-Job targets.
+- **Expected result:** These are fixture-derived previews, not production analytics or time-series metrics.
+- **Related issue/specification:** CM-065 #65; WBS #29/#78/#94/#95; `ReportManagementPage`; `AdminDashboard`; `AdminWorkspacePage`.
+- **Verification method:** Component/unit tests with varied fixtures and status changes; browser check after action.
+- **Evidence:** Values are computed from props and parent state; no dashboard/report metrics endpoint found.
+
+### AC-RM-012 — Non-Admin or unauthenticated caller cannot access report operations
+
+- **Role:** Employer, Student, or unauthenticated user
+- **Type:** Negative
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Frontend Admin workspace role protection exists; no report API route exists to verify server authorization or response codes.
+- **Prerequisites:** Caller is not an authorized Admin; report route/API policy is defined.
+- **Given:** Non-Admin or anonymous caller attempts to list or modify reports directly.
+- **When:** Frontend route guard and API authorization evaluate access.
+- **Then:** Verify frontend guard separately; the expected server response, data non-disclosure, and status code remain pending until a report endpoint contract exists.
+- **Expected result:** Client-side navigation/guard does not substitute for backend authorization.
+- **Related issue/specification:** CM-065 #65; WBS #29/#78/#94/#95; `RoleProtectedLayout`; `docs/authorization.md`.
+- **Verification method:** Protected-layout test plus API tests for Admin, non-Admin, and anonymous callers after report routes exist.
+- **Evidence:** Preview route uses Admin workspace; no report controller/service found in API source.
+
+### AC-RM-013 — Missing, malformed, or unknown report data has an agreed fallback
+
+- **Role:** Admin
+- **Type:** Boundary
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Preview type requires populated report and history fields; backend Report uses free-form targetType/status strings and has no response DTO contract.
+- **Prerequisites:** Product/API owners define valid target types, statuses, required reporter/target fields, date format, and history nullability.
+- **Given:** A report response omits a field, has an unknown target/status, malformed date, or empty history.
+- **When:** Admin list/details/dashboard render the record.
+- **Then:** Expected fallback, exclusion, or error behavior follows the approved response contract; this scenario does not invent defaults.
+- **Expected result:** No crash, fabricated history, or silently misclassified analytics after the contract is defined.
+- **Related issue/specification:** CM-065 #65; Prisma `Report`; frontend `AdminReport`; report API contract pending.
+- **Verification method:** Approve schema and test null/malformed/unknown values at API, utility, and browser levels.
+- **Evidence:** Prisma targetType/status are strings; no report response DTO or endpoint found.
+
+### AC-RM-014 — Report API failure does not falsely confirm triage or analytics
+
+- **Role:** Admin
+- **Type:** Negative
+- **Scenario status:** Needs confirmation
+- **Implementation status:** Report screen actions and metrics use synchronous local mock state; no report API or network error path is evidenced.
+- **Prerequisites:** Report-list/action/analytics API contract exists and a request returns an authorization, validation, conflict, or service error.
+- **Given:** A report request fails.
+- **When:** Admin loads the queue, changes status, or refreshes analytics.
+- **Then:** The client preserves the last confirmed server data, differentiates empty from error, and does not show persisted success or metrics derived from an uncommitted action.
+- **Expected result:** Error codes, retry behavior, and consistency rules await API contract; mock behavior is not evidence.
+- **Related issue/specification:** CM-065 #65; WBS #78/#94/#95; `ReportManagementPage`; report API contract pending.
+- **Verification method:** Agree error/consistency contract then test 401/403/validation/conflict/5xx and browser loading/empty/error/success states.
+- **Evidence:** No report controller/service/DTO or report error-handling client found.
+
+## 9. Traceability table
+
+This matrix links each drafted scenario to its requirement and evidence source. Related issue numbers are traceability leads from the repository WBS map, not proof that their exact acceptance criteria were reviewed or approved. All scenarios below remain **Draft** unless marked **Needs confirmation**; none has execution evidence from this documentation change.
+
+| Business Area        | Requirement (initial coverage target)                                                      | Scenario ID | Related Issue / specification                                                                     | Implementation Status (repository evidence)                                                                                                     | Verification Method                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Company Verification | Admin lists and searches companies                                                         | `AC-CV-001` | CM-065 #65; WBS #69/#84; `AdminCompaniesController.findAll`; `QueryCompaniesDto`                  | API implemented; frontend list is mock/preview; integration pending                                                                             | Controller/service tests; API query tests; browser list/filter check after integration                                    |
+| Company Verification | Admin reviews the selected company details                                                 | `AC-CV-002` | CM-065 #65; `AdminCompaniesController.findAll`; `EmployerManagementPage`                          | Frontend detail dialog is preview; API list returns company records; dedicated Admin detail route is not documented                             | Browser detail-content check; confirm required review fields with business owner                                          |
+| Company Verification | Admin approves a pending company                                                           | `AC-CV-003` | CM-065 #65; WBS #69/#84; `VerifyCompanyDto`; company transition table                             | API transition implemented; frontend action is preview; integration pending                                                                     | `CompaniesService` tests; API authorization/transition check; browser status and notification check after integration     |
+| Company Verification | Admin rejects a pending company with a valid reason                                        | `AC-CV-004` | CM-065 #65; `VerifyCompanyDto`; `CompaniesService.adminVerify`                                    | API implemented; UI preview; integration pending                                                                                                | Service validation tests and API request with reason                                                                      |
+| Company Verification | Empty, short, or too-long rejection reason is rejected                                     | `AC-CV-005` | CM-065 #65; `VerifyCompanyDto`; `CompaniesService.adminVerify`                                    | API min/max constraints documented in code; frontend preview validation exists, end-to-end pending                                              | DTO/service boundary tests (9/10/1000/1001 trimmed characters)                                                            |
+| Company Verification | Repeat or otherwise disallowed verification transition is rejected without changing status | `AC-CV-006` | CM-065 #65; `canTransitionCompanyVerification`; `CompaniesService.adminVerify`                    | API transition guard implemented; frontend does not call API                                                                                    | Transition/service tests; verify unchanged status and no duplicate side effects                                           |
+| Company Verification | Admin can revoke or re-verify only through supported transitions                           | `AC-CV-007` | CM-065 #65; `recruitment-state-transitions.md`; `recruitment-api.md`                              | API supports `VERIFIED → REJECTED` and `REJECTED → VERIFIED`; frontend integration pending                                                      | Transition tests; confirm revocation policy and reason requirements with owner                                            |
+| Company Verification | Employer cannot access Admin company list or verification action                           | `AC-CV-008` | CM-065 #65; `AdminCompaniesController`; authorization guide                                       | API route is ADMIN-guarded; frontend role UI is not API authorization evidence                                                                  | API tests with EMPLOYER token expect 403                                                                                  |
+| Company Verification | Anonymous caller cannot access Admin company routes                                        | `AC-CV-009` | CM-065 #65; `AdminCompaniesController`; authorization guide                                       | API route uses `AuthGuard`; frontend role UI is not API authorization evidence                                                                  | API requests without a session expect 401                                                                                 |
+| Company Verification | Company profile without a tax code follows an agreed verification prerequisite             | `AC-CV-010` | CM-065 #65; `CreateCompanyDto`; company state transition specification                            | **Needs confirmation:** DTO makes taxCode optional, while state transition specification says valid taxCode is required                         | Confirm product rule; then add DTO/service boundary test. Do not assert an outcome yet                                    |
+| Company Verification | Invalid company profile fields are rejected under DTO constraints                          | `AC-CV-011` | CM-065 #65; `CreateCompanyDto`; `UpdateCompanyDto`                                                | API DTO constraints implemented; profile UI remains preview                                                                                     | DTO/API tests for name and taxCode boundaries and invalid types                                                           |
+| Company Verification | Unknown company ID returns not found                                                       | `AC-CV-012` | CM-065 #65; `CompaniesService.adminVerify`; Admin controller                                      | API 404 `COMPANY_NOT_FOUND` documented; frontend integration pending                                                                            | Service/API test using unknown company ID                                                                                 |
+| Company Verification | Unexpected verification failure is not shown as success                                    | `AC-CV-013` | CM-065 #65; `CompaniesService.adminVerify`; API error docs                                        | **Needs confirmation:** feature-specific unexpected error envelope and UI retry/message behavior are not specified                              | Agree safe failure behavior; controlled service failure test                                                              |
+| Company Verification | Missing or unsupported verification status is rejected                                     | `AC-CV-014` | CM-065 #65; `VerifyCompanyDto`; app `ValidationPipe`                                              | DTO allows only `VERIFIED`/`REJECTED`; UI remains preview                                                                                       | API tests for missing and unsupported status values                                                                       |
+| Job Moderation       | Admin lists pending jobs with search, status, company, and pagination filters              | `AC-JM-001` | CM-065 #65; WBS #72/#86; `AdminJobsController.findAll`; `QueryAdminJobsDto`                       | API implemented; Admin UI filters are mock/preview; integration pending                                                                         | Controller/service tests; query boundaries; browser filters after integration                                             |
+| Job Moderation       | Admin reviews a selected listing and its available details                                 | `AC-JM-002` | CM-065 #65; `AdminJobsController.findAll`; `JobModerationPage`                                    | Preview detail dialog exists; Admin API list includes job/company/category/skills; separate detail route not documented                         | Browser verifies displayed fields; reconcile required moderation checklist with policy                                    |
+| Job Moderation       | Admin approves a pending-approval job                                                      | `AC-JM-003` | CM-065 #65; WBS #72/#86; `ModerateJobDto`; `canTransitionJob`                                     | API supports `PENDING_APPROVAL → PUBLISHED`; UI action is preview; integration pending                                                          | Job service/transition tests; API response and publication state check                                                    |
+| Job Moderation       | Admin rejects a pending-approval job with a valid reason                                   | `AC-JM-004` | CM-065 #65; `ModerateJobDto`; `JobsService.adminModerate`                                         | API implemented; UI preview; integration pending                                                                                                | Service tests with reason and persisted status; notification evidence if required                                         |
+| Job Moderation       | Rejection reason is required and bounded                                                   | `AC-JM-005` | CM-065 #65; `ModerateJobDto`; `JobsService.adminModerate`                                         | API trims reason, requires at least 10 characters for REJECTED, and limits it to 1000; UI preview                                               | DTO/service boundary tests (9/10/1000/1001 trimmed characters)                                                            |
+| Job Moderation       | Admin closes or rejects an already published job as an allowed moderation outcome          | `AC-JM-006` | CM-065 #65; `recruitment-api.md`; `canTransitionJob`                                              | API allows `PUBLISHED → CLOSED` and `PUBLISHED → REJECTED`; rejection requires a reason. UI preview status choices differ.                      | Transition/service tests; confirm policy for closing versus rejecting a published listing                                 |
+| Job Moderation       | Admin action from an unsupported source state is rejected without mutation                 | `AC-JM-007` | CM-065 #65; `canTransitionJob`; `JobsService.adminModerate`                                       | API rejects invalid transitions; UI preview actions currently use separate local statuses                                                       | API transition tests for DRAFT, REJECTED, and CLOSED; assert no state or side-effect update                               |
+| Job Moderation       | “Flag listing” is treated as preview-only until an API status/contract is agreed           | `AC-JM-008` | CM-065 #65; `JobModerationPage`; `ModerateJobDto`; `JobStatus`                                    | UI has `Flagged` preview state; moderation DTO accepts only PUBLISHED, REJECTED, CLOSED. **API behavior pending confirmation/not implemented.** | Verify preview label; confirm whether Flagged is a real business state before adding an API acceptance criterion          |
+| Job Moderation       | Employer cannot list or moderate jobs through Admin-only routes                            | `AC-JM-009` | CM-065 #65; `AdminJobsController`; authorization guide                                            | API routes are ADMIN-guarded; frontend preview is not access control                                                                            | API requests with Employer token expect 403                                                                               |
+| Job Moderation       | Anonymous caller cannot use Admin job routes                                               | `AC-JM-010` | CM-065 #65; `AdminJobsController`; authorization guide                                            | API routes use `AuthGuard`; frontend preview is not access control                                                                              | API requests without a session expect 401                                                                                 |
+| Job Moderation       | Invalid/missing status or unsupported DTO values are rejected                              | `AC-JM-011` | CM-065 #65; `ModerateJobDto`; `QueryAdminJobsDto`                                                 | DTO validation is implemented; exact validation response envelope is framework-level                                                            | API tests for missing/invalid status, bad enum, invalid page/pageSize/companyId and unknown fields per app ValidationPipe |
+| Job Moderation       | Unknown job and concurrent stale moderation do not produce success                         | `AC-JM-012` | CM-065 #65; `JobsService.adminModerate`; `recruitment.database.mjs`                               | Not-found and conditional state update are implemented; generic infrastructure failure UX remains unspecified                                   | Service/database race test; unknown-ID test; assert no mutation or duplicate side effect                                  |
+| Job Moderation       | Moderation follows an approved content-policy rubric                                       | `AC-JM-013` | CM-065 #65; state-transition spec; approved content policy if available                           | **Needs confirmation:** API accepts decisions, but the reviewed documents do not define an objective violation rubric                           | Policy owner approves rubric and examples before scenario approval                                                        |
+| Candidate Review     | Employer lists only applications for jobs owned by its company                             | `AC-CR-001` | CM-065 #65; WBS #26/#75/#89; `recruitment-state-transitions.md`; `authorization.md`               | Frontend list is mock; owner-scoped application API is not evidenced                                                                            | API integration with two company owners; browser verification after integration                                           |
+| Candidate Review     | Search applicants by name in the preview                                                   | `AC-CR-002` | CM-065 #65; `CandidateManagementDashboard`                                                        | Name-only client-side search on fixtures; no API integration                                                                                    | Browser checks for case, whitespace, partial and no-match queries                                                         |
+| Candidate Review     | Filter by job position and application status                                              | `AC-CR-003` | CM-065 #65; `CandidateManagementDashboard`; `ApplicationStatus` design                            | Position/status filters operate on preview fixture labels                                                                                       | Browser checks for individual and combined filters and result count                                                       |
+| Candidate Review     | Sort applicants by application date                                                        | `AC-CR-004` | CM-065 #65; `CandidateManagementDashboard`                                                        | Local sort by applied date, newest/oldest                                                                                                       | Compare preview order to fixture dates                                                                                    |
+| Candidate Review     | Distinguish an empty list from filters with no matches                                     | `AC-CR-005` | CM-065 #65; `CandidateManagementDashboard`; application API contract pending                      | Preview has distinct empty and no-results messages; API empty response is unspecified                                                           | Empty fixture and no-match browser checks                                                                                 |
+| Candidate Review     | View selected candidate profile, application, resume preview and status history            | `AC-CR-006` | CM-065 #65; `CandidateDetailDialog`; `recruitment-data-design.md`                                 | Detail is fixture-based; resume is sample content; no profile/application API integration                                                       | Verify selected fixture fields, history, sample-resume label and dialog behavior                                          |
+| Candidate Review     | Handle missing or invalid candidate/application fields                                     | `AC-CR-007` | CM-065 #65; `recruitment-data-design.md`; application API contract pending                        | **Needs confirmation:** response nullability and required review fields have no implemented API contract                                        | Approve schema/fallback rules, then test absent and malformed values                                                      |
+| Candidate Review     | Deny non-owner or unauthorized access to applications/private CVs                          | `AC-CR-008` | CM-065 #65; `recruitment-state-transitions.md`; `authorization.md`                                | Ownership/privacy principles documented; application-specific guards/routes not evidenced                                                       | API tests for owner, other Employer, Student, Admin and anonymous after routes exist                                      |
+| Candidate Review     | Mark a submitted application as reviewing                                                  | `AC-CR-009` | CM-065 #65; `recruitment-state-transitions.md`; `CandidateManagementPage`                         | Transition specified; preview `New → Reviewing` is local only; no application API evidenced                                                     | API ownership/transition/history tests and separate preview browser check                                                 |
+| Candidate Review     | Shortlist an eligible submitted or reviewing application                                   | `AC-CR-010` | CM-065 #65; WBS #26/#74/#75/#89/#109; `recruitment-state-transitions.md`; `CandidateDetailDialog` | Transition specified; UI changes mock state; API integration pending                                                                            | API transition/history/notification tests and browser check after integration                                             |
+| Candidate Review     | Create an interview invitation for an eligible application                                 | `AC-CR-011` | CM-065 #65; WBS #27/#62/#76/#90/#91; `recruitment-state-transitions.md`; `CandidateDetailDialog`  | Interview transition designed; preview “Schedule interview” only changes local state; interview API not evidenced                               | Confirm API contract; then integration and browser invitation tests                                                       |
+| Candidate Review     | Accept an application after interview                                                      | `AC-CR-012` | CM-065 #65; `recruitment-state-transitions.md`; `CandidateDetailDialog`                           | State transition specified; preview local update only; no application API evidenced                                                             | API tests for terminal state, history, pending-interview effects and browser check after integration                      |
+| Candidate Review     | Reject an eligible application with optional feedback                                      | `AC-CR-013` | CM-065 #65; `recruitment-state-transitions.md`; `CandidateDetailDialog`                           | **Needs confirmation:** state spec permits multiple source states, preview permits rejection only from Interview; API absent                    | Reconcile product policy and test each allowed source state after API contract                                            |
+| Candidate Review     | Reject invalid, terminal or stale application transitions without mutation                 | `AC-CR-014` | CM-065 #65; `recruitment-state-transitions.md`; application API contract pending                  | Terminal states specified; API validation/conditional writes not evidenced                                                                      | Transition-matrix and concurrent-update tests once service exists                                                         |
+| Candidate Review     | Display ranking only under a reproducible approved scoring contract                        | `AC-CR-015` | CM-065 #65; WBS #74/#109; `recruitment-data-design.md` JobMatch; `wbs-issue-map.json`             | **Needs confirmation:** schema stores match scores; no ranking endpoint, algorithm contract or UI control evidenced                             | Approve scoring inputs/version/explanation, then deterministic service/browser tests                                      |
+| Candidate Review     | Remove an application from shortlist under an approved transition rule                     | `AC-CR-016` | CM-065 #65; WBS #74/#75/#89; `recruitment-state-transitions.md`; `CandidateDetailDialog`          | **Needs confirmation:** no reverse transition or preview action is specified                                                                    | Decide status/history/interview effects before adding transition and UI tests                                             |
+| Candidate Review     | Save candidate-review notes in preview only                                                | `AC-CR-017` | CM-065 #65; `CandidateDetailDialog.saveNotes`; `CandidateManagementPage.saveNotes`                | Local state only; nonblank validation and 1200-character input limit; no notes API evidenced                                                    | Browser check blank/valid note, preview feedback and reload behavior                                                      |
+| Candidate Review     | Surface application API failures without false success                                     | `AC-CR-018` | CM-065 #65; `recruitment-api.md`; application/interview API contract pending                      | **Needs confirmation:** no review API or network failure contract; synchronous preview cannot verify failures                                   | Agree error envelope then test 401/403/validation/conflict/5xx and preservation of confirmed state/input                  |
+| Account Management   | View accounts and details                                                                  | `AC-AM-001` | CM-065 #65; WBS #29/#77/#94; `UserManagementPage`; Prisma `User`                                  | Fixture list/details only; no Admin account API                                                                                                 | Browser check of list fields, selected record and close behavior                                                          |
+| Account Management   | Search accounts by name/email                                                              | `AC-AM-002` | CM-065 #65; `UserManagementPage`                                                                  | Client-side fixture search                                                                                                                      | Browser checks for name/email, case, whitespace and no result                                                             |
+| Account Management   | Filter accounts by role/status                                                             | `AC-AM-003` | CM-065 #65; `UserManagementPage`; Prisma `UserRole`/`AccountStatus`                               | Fixture filters; UI status labels differ from Prisma enum names                                                                                 | Browser filter checks; approve API-to-UI status mapping                                                                   |
+| Account Management   | Suspend active account in preview                                                          | `AC-AM-004` | CM-065 #65; `UserManagementPage`; `AdminActionDialog`; `AdminWorkspacePage.updateUserStatus`      | Local status/notice/activity update only; confirmation has no reason field; no persisted action API                                             | Browser confirm/cancel check; API tests when contract exists                                                              |
+| Account Management   | Reactivate suspended account in preview                                                    | `AC-AM-005` | CM-065 #65; `UserManagementPage`; `AdminWorkspacePage.updateUserStatus`                           | Direct local status change, no confirmation/reason; backend behavior absent                                                                     | Browser preview check; approve backend policy/API first                                                                   |
+| Account Management   | Activate pending account                                                                   | `AC-AM-006` | CM-065 #65; `UserManagementPage`; Prisma `AccountStatus`; `api-contracts.md`                      | **Needs confirmation:** preview directly activates; verification bypass policy is undefined                                                     | Security/product decision, then API and browser tests                                                                     |
+| Account Management   | Define required reason and action validation                                               | `AC-AM-007` | CM-065 #65; `UserManagementPage`; `AdminActionDialog`; WBS #77                                    | **Needs confirmation:** no account reason DTO/contract; UI does not request a reason                                                            | Approve policy then boundary tests for UI/DTO/service                                                                     |
+| Account Management   | Enforce Admin-only account access                                                          | `AC-AM-008` | CM-065 #65; WBS #29/#77/#94; `RoleProtectedLayout`; `authorization.md`                            | Frontend guard exists; no account API to verify server authorization                                                                            | Protected-layout tests and API authorization tests after route exists                                                     |
+| Account Management   | Handle unknown, duplicate, or stale status operation                                       | `AC-AM-009` | CM-065 #65; WBS #77; Prisma `User`; account API contract pending                                  | Preview has no missing/stale action response; no Admin action service                                                                           | Future service tests for not-found, idempotency, stale writes and unchanged state                                         |
+| Account Management   | Surface failures without false account/session success                                     | `AC-AM-010` | CM-065 #65; `AdminWorkspacePage`; `SessionService`; `api-contracts.md`                            | UI action is local; auth denies suspended accounts separately with `ACCOUNT_SUSPENDED`; no management API                                       | Future 401/403/validation/conflict/5xx tests and suspended-session test                                                   |
+| Report Management    | View report fixtures and details                                                           | `AC-RM-001` | CM-065 #65; WBS #29/#78/#94/#95; `ReportManagementPage`; Prisma `Report`                          | Local fixture list/details; ID not displayed; no report API                                                                                     | Browser check selected record, fields and close behavior                                                                  |
+| Report Management    | Search reports                                                                             | `AC-RM-002` | CM-065 #65; `ReportManagementPage`                                                                | Local search over reporter, target label, and reason only                                                                                       | Browser query checks including fields intentionally not searched                                                          |
+| Report Management    | Filter reports by status                                                                   | `AC-RM-003` | CM-065 #65; `ReportManagementPage`; Prisma `Report.status`                                        | Fixture status filter; DB status is free-form String                                                                                            | Browser status/count checks; define persisted enum before API integration                                                 |
+| Report Management    | Start review and record local handling history                                             | `AC-RM-004` | CM-065 #65; `ReportManagementPage`; `AdminActionDialog`; `AdminWorkspacePage.updateReportStatus`  | Open → Reviewing in local preview; optional note gets preview fallback; local history only                                                      | Browser confirm/cancel/history checks                                                                                     |
+| Report Management    | Resolve report with a valid note                                                           | `AC-RM-005` | CM-065 #65; `ReportManagementPage`; `AdminActionDialog`; Prisma `Report`                          | Reviewing → Resolved in local preview; UI requires 10–500 chars; no API/history persistence                                                     | Preview note boundaries and status/history/count check; approve backend contract                                          |
+| Report Management    | Dismiss report with a valid note                                                           | `AC-RM-006` | CM-065 #65; `ReportManagementPage`; `AdminActionDialog`; Prisma `Report`                          | Reviewing → Dismissed in preview; same UI note check; Dismissed absent from Prisma contract                                                     | Preview confirm/cancel checks; approve persisted status contract                                                          |
+| Report Management    | Cancel report action without state/history mutation                                        | `AC-RM-007` | CM-065 #65; `ReportManagementPage`; `AdminActionDialog`                                           | Cancel closes preview dialog; no API action                                                                                                     | Component/browser assertion that status/history stay unchanged                                                            |
+| Report Management    | Handle terminal/unsupported status                                                         | `AC-RM-008` | CM-065 #65; `ReportManagementPage`; Prisma `Report.status`                                        | Preview hides actions outside Open/Reviewing; backend transition rules absent                                                                   | Verify terminal preview and define API state machine                                                                      |
+| Report Management    | Validate required notes according to approved contract                                     | `AC-RM-009` | CM-065 #65; `AdminActionDialog`; report API contract pending                                      | UI requires >=10 trimmed characters and max 500 for close actions; not backend validation                                                       | Preview boundary tests and future DTO/service tests                                                                       |
+| Report Management    | Display handling history as preview-only data                                              | `AC-RM-010` | CM-065 #65; `AdminReport`; `AdminWorkspacePage.updateReportStatus`; Prisma `Report`/`AuditLog`    | Frontend local history; no ReportHistory model/endpoint; no actor attribution                                                                   | Check fixture and local action history; audit tests after design                                                          |
+| Report Management    | Derive report counts and dashboard values from preview data                                | `AC-RM-011` | CM-065 #65; WBS #78/#94/#95; `ReportManagementPage`; `AdminDashboard`; `AdminWorkspacePage`       | Status counts and reported-job metric derive from local props; no analytics endpoint                                                            | Component tests with varied fixtures and after local status changes                                                       |
+| Report Management    | Enforce Admin-only report access                                                           | `AC-RM-012` | CM-065 #65; WBS #78/#94/#95; `RoleProtectedLayout`; `authorization.md`                            | Frontend role guard exists; report API authorization cannot be tested because route absent                                                      | Protected-layout checks; API tests after report endpoint exists                                                           |
+| Report Management    | Handle missing, malformed, or unknown report data                                          | `AC-RM-013` | CM-065 #65; frontend `AdminReport`; Prisma `Report`; report API contract pending                  | **Needs confirmation:** UI expects complete fixture fields; backend fields are free-form and response DTO absent                                | Approve schema and test null/malformed/unknown values                                                                     |
+| Report Management    | Surface report API errors without false triage/analytics success                           | `AC-RM-014` | CM-065 #65; WBS #78/#94/#95; `ReportManagementPage`; report API contract pending                  | Synchronous local preview only; no API/error path found                                                                                         | Future tests for 401/403/validation/conflict/5xx and preserved server state                                               |
+
+## 10. Source documents and implementation evidence
 
 Use these repository sources while adding detailed scenarios. If a source conflicts with an approved issue/decision, record the discrepancy and request clarification; do not silently select one version.
 
@@ -841,7 +1231,7 @@ Use these repository sources while adding detailed scenarios. If a source confli
 - `apps/api/prisma/schema.prisma` — persisted model definitions; not a route or workflow implementation checklist.
 - `docs/wbs-issue-map.json` — WBS-to-Issue traceability references; team baseline approval is pending as noted in `docs/project-baseline.md`.
 
-## 9. Review and completion checklist
+## 11. Review and completion checklist
 
 Before marking a scenario approved or verified:
 
