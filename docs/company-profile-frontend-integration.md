@@ -29,7 +29,9 @@ The frontend workspace session currently refreshes the HttpOnly session and read
 
 ## Commit 1 foundation
 
-`apps/web/src/features/employer/companyApi.ts` records frontend request/response types, the exact three verification states and labels, and helpers for API error normalization and constructing create/update DTO payloads. Its unit tests cover the status contract, error shapes, and supported request fields. The UI still does not issue requests; API wiring, server validation presentation, failure UX, and integration/browser tests remain for later CM-068 commits.
+`apps/web/src/features/employer/companyApi.ts` records frontend request/response types, the exact three verification states and labels, and helpers for API error normalization, DTO-based validation, and constructing create/update request payloads. Create requires a trimmed 2–255 character name; update permits an omitted name. Description is at most 5000 characters, website and location at most 255, and a supplied tax code must be 6–50 characters. The backend does not define URL or tax-code character-format rules, so the form does not invent them. Empty optional create values are omitted; nullable update values are sent as `null` to clear them.
+
+Validation errors render in Vietnamese beside their fields and are connected with `aria-describedby`. Backend status/code and Nest validation message arrays are translated to a general message and known field errors; 401, 403, 404, known 409 conflicts, 5xx, and network failures have distinct presentations. These are prepared UI mappings only: the Company Profile UI still does not issue requests, so live API errors are not yet observed. API wiring, retry behavior, and integrated/browser tests remain for later CM-068 commits.
 
 ## Sources
 

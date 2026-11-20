@@ -43,6 +43,14 @@ type CompanyProfileFormValues = {
   taxCode: string;
 };
 
+type CompanyProfileField = keyof CompanyProfileFormValues;
+type CompanyProfileFieldErrors = Partial<Record<CompanyProfileField, string>>;
+
+type CompanyApiFailurePresentation = {
+  message: string;
+  fieldErrors: CompanyProfileFieldErrors;
+};
+
 type CompanyApiFailure = {
   status: number;
   code?: string;
@@ -124,16 +132,138 @@ function toCompanyProfileRequest(
   };
 }
 
+function validateCompanyProfileForm(
+  mode: "create" | "update",
+  values: CompanyProfileFormValues,
+): CompanyProfileFieldErrors {
+  const errors: CompanyProfileFieldErrors = {};
+  const name = values.name.trim();
+  const description = values.description.trim();
+  const website = values.website.trim();
+  const location = values.location.trim();
+  const taxCode = values.taxCode.trim();
+
+  if (mode === "create" && !name) {
+    errors.name = "Tên doanh nghiệp là bắt buộc khi tạo hồ sơ.";
+  } else if (name && (name.length < 2 || name.length > 255)) {
+    errors.name = "Tên doanh nghiệp phải có từ 2 đến 255 ký tự.";
+  }
+  if (description.length > 5000) {
+    errors.description = "Mô tả không được vượt quá 5000 ký tự.";
+  }
+  if (website.length > 255) {
+    errors.website = "Website không được vượt quá 255 ký tự.";
+  }
+  if (location.length > 255) {
+    errors.location = "Địa điểm không được vượt quá 255 ký tự.";
+  }
+  if (taxCode && (taxCode.length < 6 || taxCode.length > 50)) {
+    errors.taxCode = "Mã số thuế phải có từ 6 đến 50 ký tự nếu được cung cấp.";
+  }
+
+  return errors;
+}
+
+function getCompanyApiFailurePresentation(
+  failure: CompanyApiFailure,
+): CompanyApiFailurePresentation {
+  const fieldErrors: CompanyProfileFieldErrors = {};
+  for (const detail of failure.details) {
+    const normalized = detail.toLowerCase();
+    if (normalized.includes("name ") || normalized.startsWith("name")) {
+      fieldErrors.name =
+        "Tên doanh nghiệp chưa hợp lệ. Hãy kiểm tra độ dài từ 2 đến 255 ký tự.";
+    } else if (normalized.includes("description")) {
+      fieldErrors.description = "Mô tả chưa hợp lệ hoặc vượt quá 5000 ký tự.";
+    } else if (normalized.includes("website")) {
+      fieldErrors.website = "Website chưa hợp lệ hoặc vượt quá 255 ký tự.";
+    } else if (normalized.includes("location")) {
+      fieldErrors.location = "Địa điểm chưa hợp lệ hoặc vượt quá 255 ký tự.";
+    } else if (
+      normalized.includes("taxcode") ||
+      normalized.includes("tax code")
+    ) {
+      fieldErrors.taxCode =
+        "Mã số thuế phải có từ 6 đến 50 ký tự nếu được cung cấp.";
+    }
+  }
+
+  if (failure.status === 0) {
+    return {
+      message:
+        "Không thể kết nối máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      fieldErrors,
+    };
+  }
+  if (failure.status === 401) {
+    return {
+      message:
+        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.",
+      fieldErrors,
+    };
+  }
+  if (failure.status === 403) {
+    return {
+      message:
+        "Tài khoản hiện tại không có quyền quản lý hồ sơ doanh nghiệp này.",
+      fieldErrors,
+    };
+  }
+  if (failure.status === 404) {
+    return {
+      message: "Không tìm thấy hồ sơ doanh nghiệp liên kết với tài khoản.",
+      fieldErrors,
+    };
+  }
+  if (failure.status === 409) {
+    const conflictMessages: Record<string, string> = {
+      COMPANY_ALREADY_EXISTS: "Tài khoản đã có hồ sơ doanh nghiệp liên kết.",
+      TAX_CODE_EXISTS: "Mã số thuế này đã được đăng ký cho doanh nghiệp khác.",
+      COMPANY_STATE_CHANGED:
+        "Trạng thái hồ sơ đã thay đổi. Hãy tải lại dữ liệu trước khi sửa.",
+    };
+    return {
+      message: failure.code
+        ? (conflictMessages[failure.code] ??
+          "Dữ liệu hồ sơ đang xung đột. Vui lòng tải lại và thử lại.")
+        : "Dữ liệu hồ sơ đang xung đột. Vui lòng tải lại và thử lại.",
+      fieldErrors,
+    };
+  }
+  if (failure.status === 400) {
+    return {
+      message:
+        Object.keys(fieldErrors).length > 0
+          ? "Một số thông tin chưa hợp lệ. Hãy kiểm tra các trường được đánh dấu."
+          : "Yêu cầu chưa hợp lệ. Vui lòng kiểm tra lại thông tin hồ sơ.",
+      fieldErrors,
+    };
+  }
+  if (failure.status >= 500) {
+    return {
+      message: "Máy chủ đang gặp sự cố. Dữ liệu chưa được xác nhận là đã lưu.",
+      fieldErrors,
+    };
+  }
+  return {
+    message: "Không thể xử lý yêu cầu hồ sơ doanh nghiệp. Vui lòng thử lại.",
+    fieldErrors,
+  };
+}
+
 export {
   companyVerificationStatuses,
   getCompanyVerificationLabel,
+  getCompanyApiFailurePresentation,
   normalizeCompanyApiFailure,
   toCompanyProfileRequest,
+  validateCompanyProfileForm,
 };
 export type {
   CompanyApiFailure,
   CompanyApiProfile,
   CompanyProfileFormValues,
+  CompanyProfileFieldErrors,
   CompanyVerificationStatus,
   CreateCompanyRequest,
   UpdateCompanyRequest,

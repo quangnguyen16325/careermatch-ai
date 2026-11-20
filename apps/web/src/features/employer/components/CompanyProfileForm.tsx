@@ -6,10 +6,15 @@ import {
   StatusBadge,
   type StatusTone,
 } from "../../../components/ui/StatusBadge";
+import { FeedbackMessage } from "./FeedbackMessage";
 import {
+  getCompanyApiFailurePresentation,
   getCompanyVerificationLabel,
   toCompanyProfileRequest,
+  validateCompanyProfileForm,
+  type CompanyApiFailure,
   type CompanyApiProfile,
+  type CompanyProfileFieldErrors,
   type CompanyProfileFormValues,
   type CreateCompanyRequest,
   type UpdateCompanyRequest,
@@ -18,6 +23,7 @@ import {
 type CompanyProfileFormProps = {
   profile: CompanyApiProfile | null;
   mode: "create" | "update";
+  apiFailure?: CompanyApiFailure | null;
   onCancel: () => void;
   onSave: (
     request: CreateCompanyRequest | UpdateCompanyRequest,
@@ -61,11 +67,18 @@ const fields: {
 function CompanyProfileForm({
   profile,
   mode,
+  apiFailure = null,
   onCancel,
   onSave,
 }: CompanyProfileFormProps) {
   const initialValues = getFormValues(profile);
   const [form, setForm] = useState(initialValues);
+  const [validationErrors, setValidationErrors] =
+    useState<CompanyProfileFieldErrors>({});
+  const [dismissedApiFields, setDismissedApiFields] = useState<
+    Set<keyof CompanyProfileFormValues>
+  >(() => new Set());
+  const [dismissedApiValidation, setDismissedApiValidation] = useState(false);
   const isDirty = Object.keys(form).some(
     (key) =>
       form[key as keyof CompanyProfileFormValues] !==
@@ -79,13 +92,31 @@ function CompanyProfileForm({
     VERIFIED: "success",
     REJECTED: "danger",
   };
+  const apiFailurePresentation = apiFailure
+    ? getCompanyApiFailurePresentation(apiFailure)
+    : null;
+
+  function getFieldError(field: keyof CompanyProfileFormValues) {
+    return (
+      validationErrors[field] ??
+      (dismissedApiFields.has(field)
+        ? undefined
+        : apiFailurePresentation?.fieldErrors[field])
+    );
+  }
 
   function updateField(name: keyof CompanyProfileFormValues, value: string) {
     setForm((current) => ({ ...current, [name]: value }));
+    setValidationErrors((current) => ({ ...current, [name]: undefined }));
+    setDismissedApiFields((current) => new Set(current).add(name));
+    if (apiFailure?.status === 400) setDismissedApiValidation(true);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextErrors = validateCompanyProfileForm(mode, form);
+    setValidationErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
     onSave(toCompanyProfileRequest(mode, form), mode);
   }
 
@@ -94,7 +125,12 @@ function CompanyProfileForm({
 
   return (
     <Card as="div" className="mt-5">
-      <form className="space-y-5" onSubmit={handleSubmit}>
+      <form className="space-y-5" noValidate onSubmit={handleSubmit}>
+        {apiFailurePresentation && !dismissedApiValidation ? (
+          <FeedbackMessage tone="error">
+            {apiFailurePresentation.message}
+          </FeedbackMessage>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-slate-950">
@@ -126,6 +162,7 @@ function CompanyProfileForm({
         <div className="grid gap-4 sm:grid-cols-2">
           {fields.map((field) => {
             const required = field.name === "name" && mode === "create";
+            const fieldError = getFieldError(field.name);
             return (
               <label
                 className="block text-sm font-medium text-slate-700"
@@ -139,6 +176,10 @@ function CompanyProfileForm({
                   </span>
                 ) : null}
                 <input
+                  aria-describedby={
+                    fieldError ? `${field.name}-error` : undefined
+                  }
+                  aria-invalid={Boolean(fieldError)}
                   autoComplete="off"
                   className={inputClass}
                   maxLength={field.maxLength}
@@ -150,6 +191,14 @@ function CompanyProfileForm({
                   type="text"
                   value={form[field.name]}
                 />
+                {fieldError ? (
+                  <span
+                    className="mt-1 block text-xs text-rose-700"
+                    id={`${field.name}-error`}
+                  >
+                    {fieldError}
+                  </span>
+                ) : null}
                 {field.name === "name" ? (
                   <span className="mt-1 block text-xs font-normal text-slate-500">
                     Required when creating a profile; 2–255 characters.
@@ -164,7 +213,19 @@ function CompanyProfileForm({
           })}
           <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
             Company description
+            {getFieldError("description") ? (
+              <span
+                className="mt-1 block text-xs text-rose-700"
+                id="description-error"
+              >
+                {getFieldError("description")}
+              </span>
+            ) : null}
             <textarea
+              aria-describedby={
+                getFieldError("description") ? "description-error" : undefined
+              }
+              aria-invalid={Boolean(getFieldError("description"))}
               className={`${inputClass} min-h-32 resize-y py-3`}
               maxLength={5000}
               onChange={(event) =>

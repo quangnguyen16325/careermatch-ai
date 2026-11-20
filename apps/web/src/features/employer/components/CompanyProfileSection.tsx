@@ -8,6 +8,8 @@ import {
   type StatusTone,
 } from "../../../components/ui/StatusBadge";
 import {
+  getCompanyApiFailurePresentation,
+  type CompanyApiFailure,
   getCompanyVerificationLabel,
   type CompanyApiProfile,
   type CreateCompanyRequest,
@@ -20,6 +22,7 @@ type CompanyProfileSectionProps = {
   initialProfile: CompanyApiProfile | null;
   loading?: boolean;
   error?: string;
+  apiFailure?: CompanyApiFailure | null;
   onSave: (
     request: CreateCompanyRequest | UpdateCompanyRequest,
     mode: "create" | "update",
@@ -28,12 +31,16 @@ type CompanyProfileSectionProps = {
 
 function CompanyProfileSection({
   error,
+  apiFailure = null,
   initialProfile,
   loading = false,
   onSave,
 }: CompanyProfileSectionProps) {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState("");
+  const apiFailurePresentation = apiFailure
+    ? getCompanyApiFailurePresentation(apiFailure)
+    : null;
 
   function saveProfile(
     request: CreateCompanyRequest | UpdateCompanyRequest,
@@ -83,6 +90,11 @@ function CompanyProfileSection({
         <FeedbackMessage tone="success">{notice}</FeedbackMessage>
       ) : null}
       {error ? <FeedbackMessage tone="error">{error}</FeedbackMessage> : null}
+      {!editing && apiFailurePresentation ? (
+        <FeedbackMessage tone="error">
+          {apiFailurePresentation.message}
+        </FeedbackMessage>
+      ) : null}
       {loading ? (
         <FeedbackMessage tone="loading">
           Loading company profile…
@@ -90,6 +102,7 @@ function CompanyProfileSection({
       ) : null}
       {!loading && !error && editing ? (
         <CompanyProfileForm
+          apiFailure={apiFailure}
           mode={initialProfile ? "update" : "create"}
           onCancel={() => setEditing(false)}
           onSave={saveProfile}
