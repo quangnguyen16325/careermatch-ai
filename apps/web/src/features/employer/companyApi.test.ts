@@ -3,6 +3,7 @@ import {
   companyVerificationStatuses,
   getCompanyVerificationLabel,
   normalizeCompanyApiFailure,
+  toCompanyProfileRequest,
 } from "./companyApi";
 
 describe("company API contract helpers", () => {
@@ -57,6 +58,40 @@ describe("company API contract helpers", () => {
       status: 503,
       message: "Company request failed.",
       details: [],
+    });
+  });
+
+  it("creates a request with only fields supported by the create DTO", () => {
+    expect(
+      toCompanyProfileRequest("create", {
+        name: "  CareerMatch Labs  ",
+        description: "  Hiring tools  ",
+        website: "",
+        location: " Hanoi ",
+        taxCode: "0123456789",
+      }),
+    ).toEqual({
+      name: "CareerMatch Labs",
+      description: "Hiring tools",
+      location: "Hanoi",
+      taxCode: "0123456789",
+    });
+  });
+
+  it("uses nullable update fields to clear values and omits a blank optional name", () => {
+    expect(
+      toCompanyProfileRequest("update", {
+        name: " ",
+        description: "",
+        website: "https://careermatch.example",
+        location: "",
+        taxCode: "",
+      }),
+    ).toEqual({
+      description: null,
+      website: "https://careermatch.example",
+      location: null,
+      taxCode: null,
     });
   });
 });

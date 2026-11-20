@@ -4,7 +4,7 @@ import { WorkspaceLayout } from "../../../components/layout/WorkspaceLayout";
 import { CompanyProfileSection } from "../components/CompanyProfileSection";
 import { EmployerWorkspaceHeader } from "../components/EmployerWorkspaceHeader";
 import { JobManagementSection } from "../components/JobManagementSection";
-import { mockCompanyProfile, mockJobPostings } from "../data/mockEmployerData";
+import { applyCompanyProfilePreview, mockCompanyProfile, mockJobPostings } from "../data/mockEmployerData";
 import type { CompanyProfile, JobPosting, JobStatus } from "../types";
 
 function EmployerCompanyJobsPage() {
@@ -27,7 +27,10 @@ function EmployerCompanyJobsPage() {
       header={<EmployerWorkspaceHeader companyName={company?.name || "Your company"} />}
     >
       <div className="grid gap-10 sm:gap-12">
-        <CompanyProfileSection initialProfile={company} onSave={setCompany} />
+        <CompanyProfileSection
+          initialProfile={company}
+          onSave={(request, mode) => setCompany((current) => applyCompanyProfilePreview(current, request, mode))}
+        />
         <div className="border-t border-slate-200 pt-8 sm:pt-10">
           <div className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-500"><BriefcaseBusiness size={16} />Job postings</div>
           <JobManagementSection jobs={jobs} onSave={saveJob} onStatusChange={changeJobStatus} />

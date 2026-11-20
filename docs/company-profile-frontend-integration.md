@@ -21,7 +21,7 @@ Validation and failures evidenced by current DTO/controller/service code include
 
 ## Current frontend state and integration gaps
 
-`EmployerCompanyJobsPage` initializes the profile from `mockCompanyProfile` and stores edits in React state. `CompanyProfileSection` reports “saved in this preview”; no Company Profile API request is made. Its current `CompanyProfile` form includes `logoUrl`, `coverUrl`, `contactEmail`, `phone`, `industry`, and `size`, which are not present in `CreateCompanyDto` or `UpdateCompanyDto`. Conversely, the backend includes `id`, `taxCode`, `verificationStatus`, and timestamps that the current UI model does not represent. The UI currently renders “Verification pending” as a fixed badge instead of deriving it from the backend status.
+`EmployerCompanyJobsPage` initializes the profile from `mockCompanyProfile` and stores edits in React state. `CompanyProfileSection` explicitly labels create/update as local preview; no Company Profile API request is made. The editor uses only DTO-backed fields and displays the three statuses from the API contract. Logo, cover, contact email, phone, industry, and size are not present in `CreateCompanyDto` or `UpdateCompanyDto`, so the editor calls them unsupported rather than implying they are saved. The backend includes `id`, `taxCode`, `verificationStatus`, and timestamps; these are represented in the profile model, while only editable request fields are included in payload construction.
 
 No file/image upload contract is present in the company DTOs. Do not silently discard unsupported form fields, fabricate backend values, or show a real saved/verified state. Coordinate field ownership and any contract change with the CM-015/API owner before implementing the UI integration.
 
@@ -29,7 +29,7 @@ The frontend workspace session currently refreshes the HttpOnly session and read
 
 ## Commit 1 foundation
 
-`apps/web/src/features/employer/companyApi.ts` records frontend request/response types, the exact three verification states and labels, and a helper that preserves structured API errors and validation details. Its unit tests cover the status contract and error shapes. These helpers do not issue requests or change the current mock-driven UI; API wiring, validation presentation, failure UX, and integration/browser tests remain for later CM-068 commits.
+`apps/web/src/features/employer/companyApi.ts` records frontend request/response types, the exact three verification states and labels, and helpers for API error normalization and constructing create/update DTO payloads. Its unit tests cover the status contract, error shapes, and supported request fields. The UI still does not issue requests; API wiring, server validation presentation, failure UX, and integration/browser tests remain for later CM-068 commits.
 
 ## Sources
 
