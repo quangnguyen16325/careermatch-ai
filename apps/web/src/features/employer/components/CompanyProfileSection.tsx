@@ -4,18 +4,14 @@ import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import {
-  StatusBadge,
-  type StatusTone,
-} from "../../../components/ui/StatusBadge";
-import {
   getCompanyApiFailurePresentation,
   type CompanyApiFailure,
-  getCompanyVerificationLabel,
   type CompanyApiProfile,
   type CreateCompanyRequest,
   type UpdateCompanyRequest,
 } from "../companyApi";
 import { CompanyProfileForm } from "./CompanyProfileForm";
+import { CompanyVerificationStatus } from "./CompanyVerificationStatus";
 import { FeedbackMessage } from "./FeedbackMessage";
 
 type CompanyProfileSectionProps = {
@@ -57,17 +53,12 @@ function CompanyProfileSection({
     return true;
   }
 
-  const statusTone: Record<
-    CompanyApiProfile["verificationStatus"],
-    StatusTone
-  > = {
-    PENDING: "warning",
-    VERIFIED: "success",
-    REJECTED: "danger",
-  };
-
   return (
-    <section aria-labelledby="company-profile-heading" className="space-y-5">
+    <section
+      aria-busy={loading || saving}
+      aria-labelledby="company-profile-heading"
+      className="space-y-5"
+    >
       <PageHeader
         actions={
           !editing && initialProfile ? (
@@ -131,12 +122,11 @@ function CompanyProfileSection({
                   </p>
                 </div>
               </div>
-              <StatusBadge
-                aria-label={`Company verification status: ${getCompanyVerificationLabel(initialProfile.verificationStatus)}`}
-                tone={statusTone[initialProfile.verificationStatus]}
-              >
-                {getCompanyVerificationLabel(initialProfile.verificationStatus)}
-              </StatusBadge>
+            </div>
+            <div className="mt-5">
+              <CompanyVerificationStatus
+                status={initialProfile.verificationStatus}
+              />
             </div>
             <dl className="mt-6 grid gap-5 border-t border-slate-100 pt-5 sm:grid-cols-2">
               <Detail
@@ -187,7 +177,13 @@ function CompanyProfileSection({
         </Card>
       ) : null}
       {!loading && error && onRetry ? (
-        <Button onClick={onRetry} variant="secondary">Retry loading</Button>
+        <Button
+          className="w-full sm:w-auto"
+          onClick={onRetry}
+          variant="secondary"
+        >
+          Retry loading
+        </Button>
       ) : null}
     </section>
   );

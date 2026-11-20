@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  createCompanySaveGuard,
   companyVerificationStatuses,
+  getCompanyVerificationDescription,
   getCompanyApiFailurePresentation,
   getCompanyVerificationLabel,
+  hasCompanyProfileChanges,
   normalizeCompanyApiFailure,
   toCompanyProfileRequest,
   validateCompanyProfileForm,
@@ -18,6 +21,27 @@ describe("company API contract helpers", () => {
     expect(
       companyVerificationStatuses.map(getCompanyVerificationLabel),
     ).toEqual(["Pending verification", "Verified", "Rejected"]);
+    expect(companyVerificationStatuses.map(getCompanyVerificationDescription)).toEqual([
+      "Your company profile is waiting for administrator review.",
+      "Your company profile has been verified.",
+      "Review the company details and update them if needed. This page does not provide a rejection reason or let you change the verification status. The status after an update is determined by the API response.",
+    ]);
+  });
+
+  it("detects unsaved profile changes and returns clean after values are restored", () => {
+    const initial = { name: "Company", description: "", website: "", location: "", taxCode: "" };
+    expect(hasCompanyProfileChanges(initial, initial)).toBe(false);
+    expect(hasCompanyProfileChanges({ ...initial, name: "Changed" }, initial)).toBe(true);
+    expect(hasCompanyProfileChanges({ ...initial, name: "Company" }, initial)).toBe(false);
+  });
+
+  it("blocks a second save while one is pending and allows retry after completion", () => {
+    const guard = createCompanySaveGuard();
+    expect(guard.tryStart()).toBe(true);
+    expect(guard.tryStart()).toBe(false);
+    guard.finish();
+    expect(guard.tryStart()).toBe(true);
+    guard.finish();
   });
 
   it("preserves structured backend error codes and messages", () => {

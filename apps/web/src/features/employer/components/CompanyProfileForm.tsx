@@ -2,14 +2,11 @@ import { useState, type FormEvent } from "react";
 import { Save, X } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
-import {
-  StatusBadge,
-  type StatusTone,
-} from "../../../components/ui/StatusBadge";
 import { FeedbackMessage } from "./FeedbackMessage";
+import { CompanyVerificationStatus } from "./CompanyVerificationStatus";
 import {
   getCompanyApiFailurePresentation,
-  getCompanyVerificationLabel,
+  hasCompanyProfileChanges,
   toCompanyProfileRequest,
   validateCompanyProfileForm,
   type CompanyApiFailure,
@@ -81,19 +78,7 @@ function CompanyProfileForm({
     Set<keyof CompanyProfileFormValues>
   >(() => new Set());
   const [dismissedApiValidation, setDismissedApiValidation] = useState(false);
-  const isDirty = Object.keys(form).some(
-    (key) =>
-      form[key as keyof CompanyProfileFormValues] !==
-      initialValues[key as keyof CompanyProfileFormValues],
-  );
-  const statusTone: Record<
-    CompanyApiProfile["verificationStatus"],
-    StatusTone
-  > = {
-    PENDING: "warning",
-    VERIFIED: "success",
-    REJECTED: "danger",
-  };
+  const isDirty = hasCompanyProfileChanges(form, initialValues);
   const apiFailurePresentation = apiFailure
     ? getCompanyApiFailurePresentation(apiFailure)
     : null;
@@ -127,7 +112,17 @@ function CompanyProfileForm({
 
   return (
     <Card as="div" className="mt-5">
-      <form className="space-y-5" noValidate onSubmit={handleSubmit}>
+      <form
+        aria-busy={saving}
+        className="space-y-5"
+        noValidate
+        onSubmit={handleSubmit}
+      >
+        {saving ? (
+          <FeedbackMessage tone="loading">
+            Saving company profile…
+          </FeedbackMessage>
+        ) : null}
         {apiFailurePresentation && !dismissedApiValidation ? (
           <FeedbackMessage tone="error">
             {apiFailurePresentation.message}
@@ -146,12 +141,7 @@ function CompanyProfileForm({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {profile ? (
-              <StatusBadge
-                aria-label={`Company verification status: ${getCompanyVerificationLabel(profile.verificationStatus)}`}
-                tone={statusTone[profile.verificationStatus]}
-              >
-                {getCompanyVerificationLabel(profile.verificationStatus)}
-              </StatusBadge>
+              <CompanyVerificationStatus compact status={profile.verificationStatus} />
             ) : null}
             {isDirty ? (
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
@@ -184,6 +174,7 @@ function CompanyProfileForm({
                   aria-invalid={Boolean(fieldError)}
                   autoComplete="off"
                   className={inputClass}
+                  disabled={saving}
                   maxLength={field.maxLength}
                   minLength={field.minLength}
                   onChange={(event) =>
@@ -197,6 +188,7 @@ function CompanyProfileForm({
                   <span
                     className="mt-1 block text-xs text-rose-700"
                     id={`${field.name}-error`}
+                    role="alert"
                   >
                     {fieldError}
                   </span>
@@ -219,6 +211,7 @@ function CompanyProfileForm({
               <span
                 className="mt-1 block text-xs text-rose-700"
                 id="description-error"
+                role="alert"
               >
                 {getFieldError("description")}
               </span>
@@ -229,6 +222,7 @@ function CompanyProfileForm({
               }
               aria-invalid={Boolean(getFieldError("description"))}
               className={`${inputClass} min-h-32 resize-y py-3`}
+              disabled={saving}
               maxLength={5000}
               onChange={(event) =>
                 updateField("description", event.target.value)
@@ -249,6 +243,7 @@ function CompanyProfileForm({
 
         <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
           <Button
+            className="w-full sm:w-auto"
             onClick={onCancel}
             disabled={saving}
             type="button"
@@ -257,8 +252,17 @@ function CompanyProfileForm({
           >
             Cancel and discard
           </Button>
-          <Button disabled={saving} type="submit" icon={<Save size={16} />}>
-            {saving ? "Saving…" : mode === "create" ? "Create profile" : "Save changes"}
+          <Button
+            className="w-full sm:w-auto"
+            disabled={saving}
+            type="submit"
+            icon={<Save size={16} />}
+          >
+            {saving
+              ? "Saving…"
+              : mode === "create"
+                ? "Create profile"
+                : "Save changes"}
           </Button>
         </div>
       </form>

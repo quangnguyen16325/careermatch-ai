@@ -12,7 +12,11 @@ import {
   getMyCompanyProfile,
   updateMyCompanyProfile,
 } from "../companyApiClient";
-import { getCompanyApiFailurePresentation, normalizeCompanyApiFailure } from "../companyApi";
+import {
+  createCompanySaveGuard,
+  getCompanyApiFailurePresentation,
+  normalizeCompanyApiFailure,
+} from "../companyApi";
 import type { CompanyApiFailure, CreateCompanyRequest, UpdateCompanyRequest } from "../companyApi";
 
 function EmployerCompanyJobsPage() {
@@ -21,7 +25,7 @@ function EmployerCompanyJobsPage() {
   const [companyLoadError, setCompanyLoadError] = useState("");
   const [companyApiFailure, setCompanyApiFailure] = useState<CompanyApiFailure | null>(null);
   const [companySaving, setCompanySaving] = useState(false);
-  const savingRef = useRef(false);
+  const savingRef = useRef(createCompanySaveGuard());
   const [jobs, setJobs] = useState<JobPosting[]>(mockJobPostings);
 
   const loadCompany = useCallback(async () => {
@@ -48,8 +52,7 @@ function EmployerCompanyJobsPage() {
     request: CreateCompanyRequest | UpdateCompanyRequest,
     mode: "create" | "update",
   ) {
-    if (savingRef.current) return false;
-    savingRef.current = true;
+    if (!savingRef.current.tryStart()) return false;
     setCompanySaving(true);
     setCompanyApiFailure(null);
     try {
@@ -67,7 +70,7 @@ function EmployerCompanyJobsPage() {
       setCompanyApiFailure(failure);
       return false;
     } finally {
-      savingRef.current = false;
+      savingRef.current.finish();
       setCompanySaving(false);
     }
   }

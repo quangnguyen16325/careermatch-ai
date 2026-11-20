@@ -99,6 +99,43 @@ function getCompanyVerificationLabel(
   }
 }
 
+function getCompanyVerificationDescription(
+  status: CompanyVerificationStatus,
+): string {
+  switch (status) {
+    case "PENDING":
+      return "Your company profile is waiting for administrator review.";
+    case "VERIFIED":
+      return "Your company profile has been verified.";
+    case "REJECTED":
+      return "Review the company details and update them if needed. This page does not provide a rejection reason or let you change the verification status. The status after an update is determined by the API response.";
+  }
+}
+
+function hasCompanyProfileChanges(
+  current: CompanyProfileFormValues,
+  initial: CompanyProfileFormValues,
+): boolean {
+  return Object.keys(current).some((key) => {
+    const field = key as keyof CompanyProfileFormValues;
+    return current[field] !== initial[field];
+  });
+}
+
+function createCompanySaveGuard() {
+  let saving = false;
+  return {
+    tryStart() {
+      if (saving) return false;
+      saving = true;
+      return true;
+    },
+    finish() {
+      saving = false;
+    },
+  };
+}
+
 function toCompanyProfileRequest(
   mode: "create" | "update",
   values: CompanyProfileFormValues,
@@ -265,7 +302,10 @@ function getCompanyApiFailurePresentation(
 
 export {
   companyVerificationStatuses,
+  createCompanySaveGuard,
   getCompanyVerificationLabel,
+  getCompanyVerificationDescription,
+  hasCompanyProfileChanges,
   getCompanyApiFailurePresentation,
   normalizeCompanyApiFailure,
   toCompanyProfileRequest,
