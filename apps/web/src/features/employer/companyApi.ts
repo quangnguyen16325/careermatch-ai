@@ -210,8 +210,20 @@ function getCompanyApiFailurePresentation(
     };
   }
   if (failure.status === 404) {
+    if (failure.code === "EMPLOYER_PROFILE_NOT_FOUND") {
+      return {
+        message: "Tài khoản Employer chưa có hồ sơ nhà tuyển dụng liên kết.",
+        fieldErrors,
+      };
+    }
+    if (failure.code === "COMPANY_NOT_FOUND") {
+      return {
+        message: "Không tìm thấy hồ sơ doanh nghiệp liên kết với tài khoản.",
+        fieldErrors,
+      };
+    }
     return {
-      message: "Không tìm thấy hồ sơ doanh nghiệp liên kết với tài khoản.",
+      message: "Không tìm thấy tài nguyên doanh nghiệp được yêu cầu.",
       fieldErrors,
     };
   }

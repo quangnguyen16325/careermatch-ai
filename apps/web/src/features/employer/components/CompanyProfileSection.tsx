@@ -23,17 +23,21 @@ type CompanyProfileSectionProps = {
   loading?: boolean;
   error?: string;
   apiFailure?: CompanyApiFailure | null;
+  saving?: boolean;
+  onRetry?: () => void;
   onSave: (
     request: CreateCompanyRequest | UpdateCompanyRequest,
     mode: "create" | "update",
-  ) => void;
+  ) => Promise<boolean>;
 };
 
 function CompanyProfileSection({
   error,
   apiFailure = null,
+  saving = false,
   initialProfile,
   loading = false,
+  onRetry,
   onSave,
 }: CompanyProfileSectionProps) {
   const [editing, setEditing] = useState(false);
@@ -42,15 +46,15 @@ function CompanyProfileSection({
     ? getCompanyApiFailurePresentation(apiFailure)
     : null;
 
-  function saveProfile(
+  async function saveProfile(
     request: CreateCompanyRequest | UpdateCompanyRequest,
     mode: "create" | "update",
-  ) {
-    onSave(request, mode);
+  ): Promise<boolean> {
+    const saved = await onSave(request, mode);
+    if (!saved) return false;
     setEditing(false);
-    setNotice(
-      "Changes are saved in this local preview only. No Company API request was sent.",
-    );
+    setNotice("Company profile saved successfully.");
+    return true;
   }
 
   const statusTone: Record<
@@ -103,6 +107,7 @@ function CompanyProfileSection({
       {!loading && !error && editing ? (
         <CompanyProfileForm
           apiFailure={apiFailure}
+          saving={saving}
           mode={initialProfile ? "update" : "create"}
           onCancel={() => setEditing(false)}
           onSave={saveProfile}
@@ -166,7 +171,7 @@ function CompanyProfileSection({
             No company profile yet
           </h3>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-            Create a preview profile using fields supported by the current
+            Create a company profile using fields supported by the current
             Company API contract.
           </p>
           <Button
@@ -180,6 +185,9 @@ function CompanyProfileSection({
             Create company profile
           </Button>
         </Card>
+      ) : null}
+      {!loading && error && onRetry ? (
+        <Button onClick={onRetry} variant="secondary">Retry loading</Button>
       ) : null}
     </section>
   );

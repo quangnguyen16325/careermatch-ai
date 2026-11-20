@@ -171,7 +171,7 @@ describe("company API contract helpers", () => {
     [
       404,
       undefined,
-      "Không tìm thấy hồ sơ doanh nghiệp liên kết với tài khoản.",
+      "Không tìm thấy tài nguyên doanh nghiệp được yêu cầu.",
     ],
     [
       409,

@@ -23,12 +23,13 @@ import {
 type CompanyProfileFormProps = {
   profile: CompanyApiProfile | null;
   mode: "create" | "update";
+  saving?: boolean;
   apiFailure?: CompanyApiFailure | null;
   onCancel: () => void;
   onSave: (
     request: CreateCompanyRequest | UpdateCompanyRequest,
     mode: "create" | "update",
-  ) => void;
+  ) => Promise<boolean>;
 };
 
 const emptyValues: CompanyProfileFormValues = {
@@ -67,6 +68,7 @@ const fields: {
 function CompanyProfileForm({
   profile,
   mode,
+  saving = false,
   apiFailure = null,
   onCancel,
   onSave,
@@ -112,12 +114,12 @@ function CompanyProfileForm({
     if (apiFailure?.status === 400) setDismissedApiValidation(true);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors = validateCompanyProfileForm(mode, form);
     setValidationErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    onSave(toCompanyProfileRequest(mode, form), mode);
+    await onSave(toCompanyProfileRequest(mode, form), mode);
   }
 
   const inputClass =
@@ -248,16 +250,15 @@ function CompanyProfileForm({
         <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
           <Button
             onClick={onCancel}
+            disabled={saving}
             type="button"
             variant="secondary"
             icon={<X size={16} />}
           >
             Cancel and discard
           </Button>
-          <Button type="submit" icon={<Save size={16} />}>
-            {mode === "create"
-              ? "Create preview profile"
-              : "Save preview changes"}
+          <Button disabled={saving} type="submit" icon={<Save size={16} />}>
+            {saving ? "Saving…" : mode === "create" ? "Create profile" : "Save changes"}
           </Button>
         </div>
       </form>
