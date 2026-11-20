@@ -1,31 +1,57 @@
 import type { CompanyProfile, JobPosting } from "../types";
-
-export const emptyCompanyProfile: CompanyProfile = {
-  name: "",
-  logoUrl: "",
-  coverUrl: "",
-  address: "",
-  website: "",
-  contactEmail: "",
-  phone: "",
-  industry: "",
-  size: "",
-  description: "",
-};
+import type { CreateCompanyRequest, UpdateCompanyRequest } from "../companyApi";
 
 export const mockCompanyProfile: CompanyProfile = {
+  id: "preview-company-1",
   name: "Northstar Labs",
-  logoUrl: "",
-  coverUrl: "",
-  address: "District 1, Ho Chi Minh City, Vietnam",
   website: "https://northstarlabs.example",
-  contactEmail: "careers@northstarlabs.example",
-  phone: "+84 28 7300 1234",
-  industry: "Software & Technology",
-  size: "51–200 employees",
+  location: "District 1, Ho Chi Minh City, Vietnam",
+  taxCode: "0312345678",
   description:
     "We build thoughtful software that helps ambitious teams work better. Our team pairs practical engineering with a culture of learning, ownership, and care.",
+  verificationStatus: "PENDING",
+  verifiedAt: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
+
+export function applyCompanyProfilePreview(
+  current: CompanyProfile | null,
+  request: CreateCompanyRequest | UpdateCompanyRequest,
+  mode: "create" | "update",
+): CompanyProfile {
+  if (mode === "create" || !current) {
+    const now = new Date().toISOString();
+    return {
+      ...mockCompanyProfile,
+      id: "preview-company-created",
+      name: request.name || "New company",
+      description: request.description ?? null,
+      website: request.website ?? null,
+      location: request.location ?? null,
+      taxCode: request.taxCode ?? null,
+      verificationStatus: "PENDING",
+      verifiedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  return {
+    ...current,
+    ...(request.name !== undefined ? { name: request.name } : {}),
+    ...(request.description !== undefined
+      ? { description: request.description }
+      : {}),
+    ...(request.website !== undefined ? { website: request.website } : {}),
+    ...(request.location !== undefined ? { location: request.location } : {}),
+    ...(request.taxCode !== undefined ? { taxCode: request.taxCode } : {}),
+    ...(current.verificationStatus === "REJECTED"
+      ? { verificationStatus: "PENDING" as const, verifiedAt: null }
+      : {}),
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 export const mockJobPostings: JobPosting[] = [
   {

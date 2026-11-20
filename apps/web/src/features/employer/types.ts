@@ -1,15 +1,6 @@
-export type CompanyProfile = {
-  name: string;
-  logoUrl: string;
-  coverUrl: string;
-  address: string;
-  website: string;
-  contactEmail: string;
-  phone: string;
-  industry: string;
-  size: string;
-  description: string;
-};
+import type { CompanyApiProfile } from "./companyApi";
+
+export type CompanyProfile = CompanyApiProfile;
 
 export type JobStatus = "Published" | "Draft" | "Closed";
 export type EmploymentType = "Full-time" | "Part-time" | "Contract" | "Internship";

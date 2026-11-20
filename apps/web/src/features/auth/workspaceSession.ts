@@ -4,10 +4,14 @@ type WorkspaceSessionResult =
   | { status: "forbidden" }
   | { status: "unavailable" };
 
+type WorkspaceAccessResult =
+  | { status: "authenticated"; role: string; accessToken: string }
+  | Exclude<WorkspaceSessionResult, { status: "authenticated" }>;
+
 type JsonObject = Record<string, unknown>;
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
-let pendingSession: Promise<WorkspaceSessionResult> | null = null;
+let pendingSession: Promise<WorkspaceAccessResult> | null = null;
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -21,7 +25,7 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
+async function resolveWorkspaceAccess(): Promise<WorkspaceAccessResult> {
   try {
     const refreshResponse = await fetch(`${apiBaseUrl}/auth/refresh`, {
       cache: "no-store",
@@ -51,16 +55,20 @@ async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
       return { status: "unavailable" };
     }
 
-    return { status: "authenticated", role: userPayload.role };
+    return {
+      status: "authenticated",
+      role: userPayload.role,
+      accessToken: refreshPayload.accessToken,
+    };
   } catch {
     return { status: "unavailable" };
   }
 }
 
-function getWorkspaceSession() {
+function getWorkspaceAccess() {
   if (pendingSession) return pendingSession;
 
-  const request = resolveWorkspaceSession();
+  const request = resolveWorkspaceAccess();
   pendingSession = request;
   void request.then(() => {
     if (pendingSession === request) pendingSession = null;
@@ -69,5 +77,17 @@ function getWorkspaceSession() {
   return request;
 }
 
-export { getWorkspaceSession, resolveWorkspaceSession };
-export type { WorkspaceSessionResult };
+async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
+  const result = await resolveWorkspaceAccess();
+  if (result.status !== "authenticated") return result;
+  return { status: "authenticated", role: result.role };
+}
+
+async function getWorkspaceSession(): Promise<WorkspaceSessionResult> {
+  const result = await getWorkspaceAccess();
+  if (result.status !== "authenticated") return result;
+  return { status: "authenticated", role: result.role };
+}
+
+export { getWorkspaceAccess, getWorkspaceSession, resolveWorkspaceSession };
+export type { WorkspaceAccessResult, WorkspaceSessionResult };
