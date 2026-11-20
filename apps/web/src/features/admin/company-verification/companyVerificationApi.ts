@@ -1,9 +1,11 @@
 import { resolveWorkspaceAccessToken } from "../../auth/workspaceSession";
 import type {
+  CompanyVerificationDecision,
   CompanyVerificationQueueQuery,
   CompanyVerificationQueueResponse,
   CompanyVerificationStatus,
 } from "./types";
+import { validateCompanyVerificationDecision } from "./validation";
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(
   /\/+$/,
@@ -30,6 +32,18 @@ function isJsonObject(value: unknown): value is JsonObject {
 
 function isStatus(value: unknown): value is CompanyVerificationStatus {
   return value === "PENDING" || value === "VERIFIED" || value === "REJECTED";
+}
+
+function isDecisionResponse(
+  value: unknown,
+  companyId: string,
+  expectedStatus: CompanyVerificationDecision["status"],
+): boolean {
+  return (
+    isJsonObject(value) &&
+    value.id === companyId &&
+    value.verificationStatus === expectedStatus
+  );
 }
 
 function isQueueResponse(
@@ -158,4 +172,102 @@ async function getCompanyVerificationQueue(
   return payload;
 }
 
-export { CompanyVerificationApiError, getCompanyVerificationQueue };
+async function decideCompanyVerification(
+  companyId: string,
+  decision: CompanyVerificationDecision,
+): Promise<void> {
+  const normalizedId = companyId.trim();
+  if (!normalizedId) {
+    throw new CompanyVerificationApiError(
+      "A company must be selected before submitting a decision.",
+      null,
+      "COMPANY_ID_REQUIRED",
+    );
+  }
+  if (decision.status !== "VERIFIED" && decision.status !== "REJECTED") {
+    throw new CompanyVerificationApiError(
+      "Choose a supported company verification decision.",
+      400,
+      "INVALID_DECISION",
+    );
+  }
+
+  const validationError = validateCompanyVerificationDecision(decision);
+  if (validationError) {
+    throw new CompanyVerificationApiError(
+      validationError === "reason-required"
+        ? "A reason is required to reject a company."
+        : validationError === "reason-too-short"
+          ? "The rejection reason must contain at least 10 characters."
+          : "The reason must be no longer than 1000 characters.",
+      400,
+      validationError.toUpperCase().replaceAll("-", "_"),
+    );
+  }
+
+  const tokenResult = await resolveWorkspaceAccessToken();
+  if (tokenResult.status === "unauthenticated") {
+    throw new CompanyVerificationApiError(
+      "Sign in to decide company verification requests.",
+      401,
+      "AUTHENTICATION_REQUIRED",
+    );
+  }
+  if (tokenResult.status === "unavailable") {
+    throw new CompanyVerificationApiError(
+      "Your session could not be verified. Try again.",
+      null,
+      "SESSION_UNAVAILABLE",
+    );
+  }
+
+  const payload: CompanyVerificationDecision = {
+    status: decision.status,
+    ...(decision.reason?.trim() ? { reason: decision.reason.trim() } : {}),
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl}/admin/companies/${encodeURIComponent(normalizedId)}/verify`,
+      {
+        method: "PATCH",
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${tokenResult.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+  } catch {
+    throw new CompanyVerificationApiError(
+      "Could not connect to the company verification service. The decision was not confirmed; retry manually.",
+      null,
+      "NETWORK_ERROR",
+    );
+  }
+
+  const responseBody = await readJson(response);
+  if (!response.ok) {
+    const apiError = errorFromResponse(response.status, responseBody);
+    throw new CompanyVerificationApiError(
+      apiError.message,
+      apiError.status,
+      apiError.code,
+    );
+  }
+  if (!isDecisionResponse(responseBody, normalizedId, decision.status)) {
+    throw new CompanyVerificationApiError(
+      "The service response did not confirm the requested verification status. Refresh the queue before trying again.",
+      response.status,
+      "INVALID_RESPONSE",
+    );
+  }
+}
+
+export {
+  CompanyVerificationApiError,
+  decideCompanyVerification,
+  getCompanyVerificationQueue,
+};

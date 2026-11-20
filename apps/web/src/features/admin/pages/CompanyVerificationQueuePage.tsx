@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Building2,
   ChevronLeft,
@@ -17,9 +17,12 @@ import {
 import { AdminNotice } from "../components/AdminNotice";
 import {
   CompanyVerificationApiError,
+  decideCompanyVerification,
   getCompanyVerificationQueue,
 } from "../company-verification/companyVerificationApi";
+import { validateCompanyVerificationDecision } from "../company-verification/validation";
 import type {
+  CompanyVerificationDecision,
   CompanyVerificationQueueItem,
   CompanyVerificationQueueResponse,
   CompanyVerificationStatus,
@@ -27,6 +30,10 @@ import type {
 import { Modal } from "../../../components/ui/Modal";
 
 const pageSize = 20;
+type DecisionTarget = {
+  company: CompanyVerificationQueueItem;
+  status: CompanyVerificationDecision["status"];
+};
 const statusFilters: {
   value: CompanyVerificationStatus | "ALL";
   label: string;
@@ -52,6 +59,15 @@ function CompanyVerificationQueuePage() {
   const [queue, setQueue] = useState<QueueState>({ status: "loading" });
   const [selectedCompany, setSelectedCompany] =
     useState<CompanyVerificationQueueItem | null>(null);
+  const [decisionTarget, setDecisionTarget] = useState<DecisionTarget | null>(
+    null,
+  );
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionError, setDecisionError] = useState("");
+  const [decisionFieldError, setDecisionFieldError] = useState("");
+  const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+  const submittingDecisionRef = useRef(false);
+  const [successNotice, setSuccessNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,7 +81,14 @@ function CompanyVerificationQueuePage() {
       },
       controller.signal,
     ).then(
-      (result) => setQueue({ status: "success", result }),
+      (result) => {
+        if (page > 1 && page > result.meta.totalPages) {
+          setPage(Math.max(1, result.meta.totalPages));
+          setQueue({ status: "loading" });
+          return;
+        }
+        setQueue({ status: "success", result });
+      },
       (error: unknown) => {
         if (controller.signal.aborted) return;
         setQueue({ status: "error", message: getQueueErrorMessage(error) });
@@ -97,6 +120,51 @@ function CompanyVerificationQueuePage() {
     setRetryCount((count) => count + 1);
   }
 
+  function startDecision(
+    company: CompanyVerificationQueueItem,
+    nextStatus: CompanyVerificationDecision["status"],
+  ) {
+    if (!isAllowedTransition(company.verificationStatus, nextStatus)) return;
+    setSuccessNotice("");
+    setDecisionTarget({ company, status: nextStatus });
+    setDecisionReason("");
+    setDecisionError("");
+    setDecisionFieldError("");
+  }
+
+  async function submitDecision() {
+    if (!decisionTarget || submittingDecisionRef.current) return;
+    const decision = {
+      status: decisionTarget.status,
+      ...(decisionReason ? { reason: decisionReason } : {}),
+    } satisfies CompanyVerificationDecision;
+    const validationError = validateCompanyVerificationDecision(decision);
+    if (validationError) {
+      setDecisionFieldError(getDecisionValidationMessage(validationError));
+      return;
+    }
+
+    submittingDecisionRef.current = true;
+    setIsSubmittingDecision(true);
+    setDecisionError("");
+    setDecisionFieldError("");
+    try {
+      await decideCompanyVerification(decisionTarget.company.id, decision);
+      setSuccessNotice(
+        `${getDecisionLabel(decisionTarget.status, decisionTarget.company.verificationStatus)} confirmed by the server.`,
+      );
+      setDecisionTarget(null);
+      setDecisionReason("");
+      setQueue({ status: "loading" });
+      setRetryCount((count) => count + 1);
+    } catch (error) {
+      setDecisionError(getDecisionErrorMessage(error));
+    } finally {
+      submittingDecisionRef.current = false;
+      setIsSubmittingDecision(false);
+    }
+  }
+
   const isFiltered = Boolean(search.trim()) || status !== "ALL";
 
   return (
@@ -106,6 +174,8 @@ function CompanyVerificationQueuePage() {
         eyebrow="Trust and safety"
         title="Company verification queue"
       />
+
+      {successNotice ? <AdminNotice tone="success">{successNotice}</AdminNotice> : null}
 
       <Card
         as="div"
@@ -166,6 +236,7 @@ function CompanyVerificationQueuePage() {
       ) : (
         <QueueResults
           isFiltered={isFiltered}
+          onDecision={startDecision}
           onOpenDetails={setSelectedCompany}
           onPageChange={changePage}
           page={page}
@@ -178,18 +249,45 @@ function CompanyVerificationQueuePage() {
           onClose={() => setSelectedCompany(null)}
         />
       ) : null}
+      {decisionTarget ? (
+        <CompanyVerificationDecisionDialog
+          busy={isSubmittingDecision}
+          company={decisionTarget.company}
+          error={decisionError}
+          onCancel={() => {
+            if (isSubmittingDecision) return;
+            setDecisionTarget(null);
+            setDecisionReason("");
+            setDecisionError("");
+            setDecisionFieldError("");
+          }}
+          onReasonChange={(value) => {
+            setDecisionReason(value);
+            setDecisionFieldError("");
+          }}
+          onSubmit={submitDecision}
+          reason={decisionReason}
+          validationError={decisionFieldError}
+          status={decisionTarget.status}
+        />
+      ) : null}
     </div>
   );
 }
 
 function QueueResults({
   isFiltered,
+  onDecision,
   onOpenDetails,
   onPageChange,
   page,
   result,
 }: {
   isFiltered: boolean;
+  onDecision: (
+    company: CompanyVerificationQueueItem,
+    status: CompanyVerificationDecision["status"],
+  ) => void;
   onOpenDetails: (company: CompanyVerificationQueueItem) => void;
   onPageChange: (page: number) => void;
   page: number;
@@ -229,6 +327,7 @@ function QueueResults({
             <CompanyQueueCard
               company={company}
               key={company.id}
+              onDecision={(nextStatus) => onDecision(company, nextStatus)}
               onOpenDetails={() => onOpenDetails(company)}
             />
           ))}
@@ -271,12 +370,15 @@ function QueueResults({
 
 function CompanyQueueCard({
   company,
+  onDecision,
   onOpenDetails,
 }: {
   company: CompanyVerificationQueueResponse["data"][number];
+  onDecision: (status: CompanyVerificationDecision["status"]) => void;
   onOpenDetails: () => void;
 }) {
   const tone = getStatusTone(company.verificationStatus);
+  const availableDecisions = getAvailableDecisions(company.verificationStatus);
 
   return (
     <Card as="article" className="min-w-0">
@@ -330,16 +432,108 @@ function CompanyQueueCard({
             </p>
           </div>
         </div>
-        <Button
-          className="shrink-0 self-end sm:self-start"
-          onClick={onOpenDetails}
-          size="sm"
-          variant="secondary"
-        >
-          View details
-        </Button>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end sm:self-start">
+          <Button onClick={onOpenDetails} size="sm" variant="secondary">
+            View details
+          </Button>
+          {availableDecisions.map((decision) => (
+            <Button
+              key={decision}
+              onClick={() => onDecision(decision)}
+              size="sm"
+              variant={decision === "REJECTED" ? "danger" : "primary"}
+            >
+              {getDecisionLabel(decision, company.verificationStatus)}
+            </Button>
+          ))}
+        </div>
       </div>
     </Card>
+  );
+}
+
+function CompanyVerificationDecisionDialog({
+  busy,
+  company,
+  error,
+  onCancel,
+  onReasonChange,
+  onSubmit,
+  reason,
+  status,
+  validationError,
+}: {
+  busy: boolean;
+  company: CompanyVerificationQueueItem;
+  error: string;
+  onCancel: () => void;
+  onReasonChange: (reason: string) => void;
+  onSubmit: () => void;
+  reason: string;
+  status: CompanyVerificationDecision["status"];
+  validationError: string;
+}) {
+  const actionLabel = getDecisionLabel(status, company.verificationStatus);
+  const requiresReason = status === "REJECTED";
+
+  return (
+    <Modal
+      aria-labelledby="company-verification-decision-title"
+      aria-modal="true"
+      className="max-h-[92dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7"
+      onClose={onCancel}
+      role="alertdialog"
+    >
+      <h2
+        className="text-lg font-semibold text-slate-950"
+        id="company-verification-decision-title"
+      >
+        Confirm {actionLabel.toLowerCase()}
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600">
+        {actionLabel} <strong>{company.name}</strong>? Its status will change
+        from {company.verificationStatus} to {status}.
+      </p>
+      {error ? <AdminNotice tone="error">{error}</AdminNotice> : null}
+      {requiresReason ? (
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Reason <span aria-hidden="true" className="text-rose-700">*</span>
+          <textarea
+            aria-describedby={validationError ? "company-decision-reason-error" : undefined}
+            aria-invalid={Boolean(validationError)}
+            className={`mt-1.5 min-h-28 w-full rounded-xl border px-3.5 py-3 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/10 ${validationError ? "border-rose-500" : "border-slate-200"}`}
+            disabled={busy}
+            maxLength={1000}
+            onChange={(event) => onReasonChange(event.target.value)}
+            value={reason}
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            Enter at least 10 characters after trimming (maximum 1000).
+          </span>
+          {validationError ? (
+            <span
+              className="mt-1 block text-xs text-rose-800"
+              id="company-decision-reason-error"
+              role="alert"
+            >
+              {validationError}
+            </span>
+          ) : null}
+        </label>
+      ) : null}
+      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button disabled={busy} onClick={onCancel} variant="secondary">
+          Cancel
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={onSubmit}
+          variant={status === "REJECTED" ? "danger" : "primary"}
+        >
+          {busy ? "Submitting..." : `Confirm ${actionLabel}`}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -454,6 +648,59 @@ function getQueueErrorMessage(error: unknown): string {
     return "Your account does not have permission to view this queue.";
   if (error.status === null)
     return `${error.message} Check your connection and retry.`;
+  if (error.status >= 500)
+    return "The company verification service is unavailable. Retry in a moment.";
+  return error.message;
+}
+
+function getAvailableDecisions(
+  currentStatus: CompanyVerificationStatus,
+): CompanyVerificationDecision["status"][] {
+  if (currentStatus === "PENDING") return ["VERIFIED", "REJECTED"];
+  if (currentStatus === "VERIFIED") return ["REJECTED"];
+  return ["VERIFIED"];
+}
+
+function isAllowedTransition(
+  currentStatus: CompanyVerificationStatus,
+  nextStatus: CompanyVerificationDecision["status"],
+): boolean {
+  return getAvailableDecisions(currentStatus).includes(nextStatus);
+}
+
+function getDecisionLabel(
+  nextStatus: CompanyVerificationDecision["status"],
+  currentStatus: CompanyVerificationStatus,
+): string {
+  if (currentStatus === "VERIFIED" && nextStatus === "REJECTED")
+    return "Revoke verification";
+  if (currentStatus === "REJECTED" && nextStatus === "VERIFIED")
+    return "Verify again";
+  return nextStatus === "VERIFIED" ? "Approve" : "Reject";
+}
+
+function getDecisionValidationMessage(
+  error: "reason-required" | "reason-too-short" | "reason-too-long",
+): string {
+  if (error === "reason-required") return "Enter a reason before rejecting.";
+  if (error === "reason-too-short")
+    return "The reason must contain at least 10 characters after trimming.";
+  return "The reason must be no longer than 1000 characters.";
+}
+
+function getDecisionErrorMessage(error: unknown): string {
+  if (!(error instanceof CompanyVerificationApiError))
+    return "The decision could not be confirmed. Refresh the queue before retrying.";
+  if (error.code === "INVALID_STATE_TRANSITION")
+    return "This company’s status changed or this action is no longer allowed. Refresh the queue and review it again.";
+  if (error.code === "COMPANY_NOT_FOUND")
+    return "This company no longer exists. Refresh the queue.";
+  if (error.status === 401)
+    return "Your session has expired. Sign in again before retrying.";
+  if (error.status === 403)
+    return "Your account does not have permission to decide company verification.";
+  if (error.status === null)
+    return `${error.message} No successful response was received; retry manually.`;
   if (error.status >= 500)
     return "The company verification service is unavailable. Retry in a moment.";
   return error.message;
