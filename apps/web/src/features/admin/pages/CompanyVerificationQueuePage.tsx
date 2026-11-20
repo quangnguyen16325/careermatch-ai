@@ -5,6 +5,7 @@ import {
   ChevronRight,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
@@ -19,9 +20,11 @@ import {
   getCompanyVerificationQueue,
 } from "../company-verification/companyVerificationApi";
 import type {
+  CompanyVerificationQueueItem,
   CompanyVerificationQueueResponse,
   CompanyVerificationStatus,
 } from "../company-verification/types";
+import { Modal } from "../../../components/ui/Modal";
 
 const pageSize = 20;
 const statusFilters: {
@@ -47,6 +50,8 @@ function CompanyVerificationQueuePage() {
   const [page, setPage] = useState(1);
   const [retryCount, setRetryCount] = useState(0);
   const [queue, setQueue] = useState<QueueState>({ status: "loading" });
+  const [selectedCompany, setSelectedCompany] =
+    useState<CompanyVerificationQueueItem | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -161,22 +166,31 @@ function CompanyVerificationQueuePage() {
       ) : (
         <QueueResults
           isFiltered={isFiltered}
+          onOpenDetails={setSelectedCompany}
           onPageChange={changePage}
           page={page}
           result={queue.result}
         />
       )}
+      {selectedCompany ? (
+        <CompanyVerificationDetailDialog
+          company={selectedCompany}
+          onClose={() => setSelectedCompany(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
 function QueueResults({
   isFiltered,
+  onOpenDetails,
   onPageChange,
   page,
   result,
 }: {
   isFiltered: boolean;
+  onOpenDetails: (company: CompanyVerificationQueueItem) => void;
   onPageChange: (page: number) => void;
   page: number;
   result: CompanyVerificationQueueResponse;
@@ -212,7 +226,11 @@ function QueueResults({
       ) : (
         <div className="grid gap-3">
           {data.map((company) => (
-            <CompanyQueueCard company={company} key={company.id} />
+            <CompanyQueueCard
+              company={company}
+              key={company.id}
+              onOpenDetails={() => onOpenDetails(company)}
+            />
           ))}
         </div>
       )}
@@ -253,15 +271,12 @@ function QueueResults({
 
 function CompanyQueueCard({
   company,
+  onOpenDetails,
 }: {
   company: CompanyVerificationQueueResponse["data"][number];
+  onOpenDetails: () => void;
 }) {
-  const tone: StatusTone =
-    company.verificationStatus === "VERIFIED"
-      ? "success"
-      : company.verificationStatus === "PENDING"
-        ? "warning"
-        : "danger";
+  const tone = getStatusTone(company.verificationStatus);
 
   return (
     <Card as="article" className="min-w-0">
@@ -315,9 +330,118 @@ function CompanyQueueCard({
             </p>
           </div>
         </div>
+        <Button
+          className="shrink-0 self-end sm:self-start"
+          onClick={onOpenDetails}
+          size="sm"
+          variant="secondary"
+        >
+          View details
+        </Button>
       </div>
     </Card>
   );
+}
+
+function CompanyVerificationDetailDialog({
+  company,
+  onClose,
+}: {
+  company: CompanyVerificationQueueItem;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      aria-labelledby="company-verification-detail-title"
+      aria-modal="true"
+      className="max-h-[92dvh] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7"
+      onClose={onClose}
+    >
+      <div className="flex items-start gap-3">
+        <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-800">
+          <Building2 aria-hidden="true" size={22} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2
+              className="break-words text-xl font-semibold text-slate-950"
+              id="company-verification-detail-title"
+            >
+              {company.name}
+            </h2>
+            <StatusBadge tone={getStatusTone(company.verificationStatus)}>
+              {company.verificationStatus}
+            </StatusBadge>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            Company verification details
+          </p>
+        </div>
+        <button
+          aria-label={`Close details for ${company.name}`}
+          className="grid size-10 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+          onClick={onClose}
+          type="button"
+        >
+          <X aria-hidden="true" size={18} />
+        </button>
+      </div>
+
+      {company.description ? (
+        <section className="mt-6">
+          <h3 className="text-sm font-semibold text-slate-800">
+            Company description
+          </h3>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
+            {company.description}
+          </p>
+        </section>
+      ) : null}
+
+      <dl className="mt-6 grid gap-x-6 gap-y-4 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+        <DetailField label="Tax code" value={company.taxCode} />
+        <DetailField label="Location" value={company.location} />
+        <DetailField label="Website" value={company.website} />
+        <DetailField label="Created" value={formatDate(company.createdAt)} />
+        <DetailField
+          label="Employer accounts"
+          value={String(company._count.employers)}
+        />
+        <DetailField label="Jobs" value={String(company._count.jobs)} />
+      </dl>
+
+      <div className="mt-6 flex justify-end border-t border-slate-100 pt-4">
+        <Button onClick={onClose} variant="secondary">
+          Close details
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  const hasValue = value !== null && value.trim().length > 0;
+
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className="mt-1 break-words font-medium text-slate-800">
+        {hasValue ? value : "Not provided"}
+      </dd>
+    </div>
+  );
+}
+
+function getStatusTone(status: CompanyVerificationStatus): StatusTone {
+  if (status === "VERIFIED") return "success";
+  if (status === "PENDING") return "warning";
+  return "danger";
 }
 
 function getQueueErrorMessage(error: unknown): string {
@@ -344,4 +468,4 @@ function formatDate(value: string): string {
   }).format(date);
 }
 
-export { CompanyVerificationQueuePage };
+export { CompanyVerificationDetailDialog, CompanyVerificationQueuePage };
