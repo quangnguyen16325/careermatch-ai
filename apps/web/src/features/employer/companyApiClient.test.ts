@@ -57,6 +57,15 @@ describe("Company Profile API client", () => {
     }));
   });
 
+  it.each(["PENDING", "VERIFIED", "REJECTED"] as const)(
+    "returns verification status %s from the API response",
+    async (verificationStatus) => {
+      authenticate();
+      companyFetch.mockResolvedValueOnce(jsonResponse({ ...profile, verificationStatus }));
+      await expect(getMyCompanyProfile(companyFetch)).resolves.toMatchObject({ verificationStatus });
+    },
+  );
+
   it("treats only the documented COMPANY_NOT_FOUND response as a missing profile", async () => {
     authenticate();
     companyFetch.mockResolvedValueOnce(jsonResponse({ code: "COMPANY_NOT_FOUND", message: "No company" }, 404));

@@ -34,6 +34,57 @@ The Company API client reuses the existing workspace auth flow: POST `/auth/refr
 
 Validation errors render in Vietnamese beside their fields and are connected with `aria-describedby`. Backend status/code and Nest validation message arrays are translated to a general message and known field errors; 401, 403, 404, known 409 conflicts, 5xx, malformed responses, and network failures have distinct failure handling. API-client tests cover request methods/paths, Bearer auth, role mismatch, recognized not-found behavior, response validation, nullable updates, and HTTP/network failures. These tests use mocked `fetch`; they do not establish live backend availability or replace browser end-to-end checks. Future work should add live/integration coverage when an Employer test session and reachable API are available.
 
+## CM-068 manual verification checklist
+
+Run the web app and API with an authenticated Employer test account. Use the app's configured API base (`VITE_API_URL`, default `/api/v1`). Verify these scenarios without using Admin or Student credentials to edit a profile:
+
+- Open the Employer workspace with a company profile and confirm GET populates name, description, website, location, tax code, and the API verification status.
+- Open it without a linked company and confirm only the structured `404 COMPANY_NOT_FOUND` response offers profile creation. A different 404, 401, 403, 5xx, malformed response, or network failure should show an error and retry action.
+- Create a profile with only the required name, then with optional values. Confirm the form closes and the profile/status shown are backed by the successful POST and subsequent GET response.
+- Edit and clear nullable fields; confirm the PATCH payload sends `null` for cleared optional fields and omits unsupported properties and verification status.
+- Simulate/produce 400 validation, 401, 403, 409, 5xx, and offline failures. Confirm field/general errors appear, entered values remain, and no success state is shown.
+- Confirm the pending, verified, and rejected copy is understandable without color; no rejection reason is shown because the Company model/API response has no rejection-reason field.
+- Repeat the profile flow at desktop, tablet, and mobile widths. Check input/error wrapping, keyboard focus, disabled save/cancel while saving, retry, and success/error/loading announcements.
+
+Do not claim these manual or browser scenarios as passed until run against a reachable API and a real test session.
+
+## Automated verification for this branch
+
+The `web` package defines these checks:
+
+```powershell
+pnpm --filter web typecheck
+pnpm --filter web lint
+pnpm --filter web test
+pnpm --filter web build
+```
+
+For Commit 6, the installed local binaries were used because pnpm's environment attempted dependency-store management and required an unavailable interactive TTY:
+
+- Typecheck: PASS (`tsc -b --pretty false`).
+- Lint: PASS (`oxlint`, no errors or warnings).
+- Unit tests: PASS (58 tests across 6 files).
+- Production build: PASS (`vite build`, 1702 modules).
+- `git diff --check`: PASS.
+
+There is no DOM rendering/testing library configured in `apps/web`; loading/retry, dirty indicator, input retention, and accessibility behavior were reviewed from implementation but not exercised as rendered component tests. No browser runner, running backend, or authenticated Employer test session was available, so browser/E2E and live API checks are **BLOCKED / not verified**.
+
+## Acceptance Criteria and Definition of Done review
+
+| Item | Status | Evidence / remaining verification |
+| --- | --- | --- |
+| AC1: Company Profile GET/POST/PATCH integration, three statuses, field validation | **PARTIAL** | `companyApiClient.ts`, `EmployerCompanyJobsPage.tsx`, form and API-client tests cover the contract and fail-closed behavior. Live API and Employer browser session remain unverified. |
+| AC2: Validation/failure handling, tests, documentation | **PARTIAL** | DTO-backed validation, error mapping, client/helper tests, and this guide are present. Rendered form behavior and real backend failure responses remain unverified. |
+| DoD: acceptance criteria, integrations, quality checks, review, docs | **PARTIAL** | Local typecheck/lint/tests/build/diff checks pass and documentation is updated. Live API/browser verification and owner confirmation below remain. |
+
+## Owner decisions and PR readiness
+
+- **CM-015 owner confirmation required:** the state-transition documentation describes a tax-code prerequisite for verification while `CreateCompanyDto` and `UpdateCompanyDto` permit tax code to be omitted. The form intentionally follows the DTO and does not make it required.
+- Confirm whether company verification rejection reasons should be persisted/exposed to the Employer. The current `Company` model has no rejection-reason field; this UI does not invent or display one.
+- Confirm the live API base/proxy and provide a test Employer session so the manual list above can be run.
+
+The frontend implementation is ready for review, but CM-068 should not be marked fully Done until the blocked live API/browser checks and owner decisions are resolved. A PR can be opened for code review with those limits stated; final acceptance remains conditional.
+
 ## Sources
 
 - `apps/api/src/companies/companies.controller.ts` and `admin-companies.controller.ts`
