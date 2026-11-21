@@ -291,6 +291,34 @@ describe("performEmployerJobAction", () => {
     );
   });
 
+  it("does not send a delete request without a job ID", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      performEmployerJobAction("  ", "delete"),
+    ).rejects.toMatchObject({
+      message: "A job ID is required before deleting a draft.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a successful response that does not confirm the requested status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          response({ accessToken: "access", tokenType: "Bearer" }),
+        )
+        .mockResolvedValueOnce(response({ ...job, status: "DRAFT" })),
+    );
+    await expect(
+      performEmployerJobAction("job-1", "submit"),
+    ).rejects.toMatchObject({
+      message: "The job service returned an invalid status update.",
+    });
+  });
+
   it("does not report a successful transition when the backend rejects it", async () => {
     vi.stubGlobal(
       "fetch",
