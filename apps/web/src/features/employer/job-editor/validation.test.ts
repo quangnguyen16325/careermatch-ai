@@ -56,6 +56,34 @@ describe("validateJobDraft", () => {
     ).toBeTruthy();
   });
 
+  it("rejects duplicate skill IDs instead of silently accepting them", () => {
+    const skillId = "a0000000-0000-4000-8000-000000000001";
+    expect(
+      validateJobDraft({
+        ...validDraft,
+        skills: [{ skillId }, { skillId: skillId.toUpperCase() }],
+      }).skills,
+    ).toBe("A skill can only be selected once.");
+  });
+
+  it("accepts skill weights from 0.1 through 10 and rejects values outside the range", () => {
+    const skillId = "a0000000-0000-4000-8000-000000000001";
+    for (const weight of [0.1, 10]) {
+      expect(
+        validateJobDraft({ ...validDraft, skills: [{ skillId, weight }] }).skills,
+      ).toBeUndefined();
+    }
+    for (const weight of [0, 10.1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        validateJobDraft({ ...validDraft, skills: [{ skillId, weight }] }).skills,
+      ).toBe("Skill weights must be between 0.1 and 10.");
+    }
+  });
+
+  it("does not require a skills selection", () => {
+    expect(validateJobDraft({ ...validDraft, skills: [] })).toEqual({});
+  });
+
   it("validates an optional category ID when one is selected", () => {
     expect(
       validateJobDraft({ ...validDraft, categoryId: "not-a-uuid" }).categoryId,

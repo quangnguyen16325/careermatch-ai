@@ -3,6 +3,7 @@ import { Save, X } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import type { JobPosting } from "../types";
+import { RequiredSkillSelector } from "./RequiredSkillSelector";
 import {
   JOB_WORK_MODES,
   type CareerCategoryOption,
@@ -11,18 +12,15 @@ import {
   type JobWorkMode,
 } from "../job-editor/types";
 import { prepareJobDraftSubmission } from "../job-editor/validation";
+import { addSkillSelection } from "../job-editor/skillSelection";
+import type { SelectedJobSkill } from "../job-editor/skillSelection";
 
 type JobEditorFormProps = {
   job?: JobPosting;
+  initialSkills?: SelectedJobSkill[];
   categories?: CareerCategoryOption[];
   onCancel: () => void;
   onSubmitDraft?: (draft: CreateJobDraftInput) => void;
-};
-
-const EMPTY_DRAFT: CreateJobDraftInput = {
-  title: "",
-  description: "",
-  skills: [],
 };
 
 const WORK_MODE_LABELS: Record<JobWorkMode, string> = {
@@ -34,18 +32,25 @@ const WORK_MODE_LABELS: Record<JobWorkMode, string> = {
 function JobEditorForm({
   categories = [],
   job,
+  initialSkills = [],
   onCancel,
   onSubmitDraft,
 }: JobEditorFormProps) {
-  const [form, setForm] = useState<CreateJobDraftInput>(() =>
-    job
-      ? {
-          title: job.title,
-          description: job.description,
-          location: job.location || undefined,
-          skills: [],
-        }
-      : EMPTY_DRAFT,
+  const [form, setForm] = useState<CreateJobDraftInput>(() => ({
+    title: job?.title ?? "",
+    description: job?.description ?? "",
+    location: job?.location || undefined,
+    skills: initialSkills.map(({ id, required, weight }) => ({
+      skillId: id,
+      required,
+      weight,
+    })),
+  }));
+  const [selectedSkills, setSelectedSkills] = useState<SelectedJobSkill[]>(() =>
+    initialSkills.reduce(
+      (skills, skill) => addSkillSelection(skills, skill),
+      [] as SelectedJobSkill[],
+    ),
   );
   const [errors, setErrors] = useState<JobDraftFieldErrors>({});
   const [submitNotice, setSubmitNotice] = useState("");
@@ -225,19 +230,20 @@ function JobEditorForm({
               Required skills{" "}
               <span className="font-normal text-slate-500">(optional)</span>
             </legend>
-            <div
-              aria-label="Required skills selector"
-              className="rounded-lg bg-slate-50 p-4"
-              role="group"
-            >
-              <p className="text-sm font-medium text-slate-700">
-                Skill selection is not connected yet.
-              </p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                The skill catalog selector will be added in the next step. No
-                skills are included in this draft yet.
-              </p>
-            </div>
+            <RequiredSkillSelector
+              onChange={(skills) => {
+                setSelectedSkills(skills);
+                updateField(
+                  "skills",
+                  skills.map(({ id, required, weight }) => ({
+                    skillId: id,
+                    required,
+                    weight,
+                  })),
+                );
+              }}
+              selectedSkills={selectedSkills}
+            />
             {renderError("skills")}
           </fieldset>
         </div>

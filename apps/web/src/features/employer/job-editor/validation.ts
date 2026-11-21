@@ -33,6 +33,25 @@ function validateJobDraft(input: CreateJobDraftInput): JobDraftFieldErrors {
 
   if (input.skills?.some(({ skillId }) => !isValidUuid(skillId.trim()))) {
     errors.skills = "Each selected skill must have a valid skill ID.";
+  } else if (
+    input.skills?.some(
+      ({ required }) => required !== undefined && typeof required !== "boolean",
+    )
+  ) {
+    errors.skills = "Each skill's required setting must be valid.";
+  } else if (
+    input.skills?.some(
+      ({ weight }) =>
+        weight !== undefined &&
+        (!Number.isFinite(weight) || weight < 0.1 || weight > 10),
+    )
+  ) {
+    errors.skills = "Skill weights must be between 0.1 and 10.";
+  }
+
+  const skillIds = input.skills?.map(({ skillId }) => skillId.trim().toLowerCase());
+  if (!errors.skills && skillIds && new Set(skillIds).size !== skillIds.length) {
+    errors.skills = "A skill can only be selected once.";
   }
 
   return errors;
