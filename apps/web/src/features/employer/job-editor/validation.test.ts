@@ -25,6 +25,9 @@ describe("validateJobDraft", () => {
     expect(
       validateJobDraft({ ...validDraft, title: ` ${"a".repeat(256)} ` }).title,
     ).toBeTruthy();
+    expect(
+      validateJobDraft({ ...validDraft, title: "a".repeat(255) }).title,
+    ).toBeUndefined();
   });
 
   it("requires a trimmed description between 10 and 10,000 characters", () => {
@@ -35,6 +38,10 @@ describe("validateJobDraft", () => {
       validateJobDraft({ ...validDraft, description: "a".repeat(10001) })
         .description,
     ).toBeTruthy();
+    expect(
+      validateJobDraft({ ...validDraft, description: "a".repeat(10000) })
+        .description,
+    ).toBeUndefined();
   });
 
   it("accepts optional location, work mode, category and skills when omitted", () => {
@@ -178,6 +185,41 @@ describe("prepareJobDraftSubmission", () => {
         title: "Job title must be between 3 and 255 characters.",
         description:
           "Job description must be between 10 and 10,000 characters.",
+      },
+    });
+  });
+
+  it("trims valid fields and preserves supported optional settings", () => {
+    expect(
+      prepareJobDraftSubmission({
+        title: "  Frontend Engineer  ",
+        description: "  Build accessible product experiences.  ",
+        location: "  Ho Chi Minh City  ",
+        workMode: "HYBRID",
+        categoryId: "c0000000-0000-4000-8000-000000000001",
+        skills: [
+          {
+            skillId: " a0000000-0000-4000-8000-000000000001 ",
+            required: false,
+            weight: 2.5,
+          },
+        ],
+      }),
+    ).toEqual({
+      valid: true,
+      payload: {
+        title: "Frontend Engineer",
+        description: "Build accessible product experiences.",
+        location: "Ho Chi Minh City",
+        workMode: "HYBRID",
+        categoryId: "c0000000-0000-4000-8000-000000000001",
+        skills: [
+          {
+            skillId: "a0000000-0000-4000-8000-000000000001",
+            required: false,
+            weight: 2.5,
+          },
+        ],
       },
     });
   });

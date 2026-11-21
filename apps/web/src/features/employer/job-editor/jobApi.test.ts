@@ -68,6 +68,63 @@ describe("job API client", () => {
     );
   });
 
+  it("loads each page when the employer job list spans multiple pages", async () => {
+    const secondJob = { ...job, id: "b0000000-0000-4000-8000-000000000002" };
+    const page = (data: (typeof job)[], pageNumber: number) =>
+      new Response(
+        JSON.stringify({
+          data,
+          meta: { total: 101, page: pageNumber, pageSize: 100, totalPages: 2 },
+        }),
+        { status: 200 },
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ accessToken: "token", tokenType: "Bearer" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(page([job], 1))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ accessToken: "token", tokenType: "Bearer" }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(page([secondJob], 2));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listEmployerJobs()).resolves.toMatchObject({
+      data: [job, secondJob],
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/\/jobs\/my\?page=1&pageSize=100$/),
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringMatching(/\/jobs\/my\?page=2&pageSize=100$/),
+      expect.any(Object),
+    );
+  });
+
+  it("rejects a list response with malformed pagination metadata", async () => {
+    stubAuthenticatedResponses(
+      new Response(
+        JSON.stringify({ data: [job], meta: { totalPages: "many" } }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listEmployerJobs()).rejects.toMatchObject({
+      name: "JobApiError",
+      message: "The job service returned invalid job data.",
+    });
+  });
+
   it("creates a draft with the validated create payload", async () => {
     const fetchMock = stubAuthenticatedResponses(
       new Response(JSON.stringify(job), { status: 201 }),

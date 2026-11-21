@@ -103,6 +103,20 @@ function isEmployerJob(value: unknown): value is EmployerJob {
   );
 }
 
+function isEmployerJobsMeta(value: unknown): value is EmployerJobsPage["meta"] {
+  return (
+    isRecord(value) &&
+    Number.isInteger(value.total) &&
+    Number(value.total) >= 0 &&
+    Number.isInteger(value.page) &&
+    Number(value.page) >= 1 &&
+    Number.isInteger(value.pageSize) &&
+    Number(value.pageSize) >= 1 &&
+    Number.isInteger(value.totalPages) &&
+    Number(value.totalPages) >= 0
+  );
+}
+
 function apiErrorMessage(status: number, payload: unknown): string {
   if (status === 401) return "Your session has expired. Sign in again.";
   if (status === 403) return "You do not have permission to manage this job.";
@@ -187,7 +201,7 @@ async function getEmployerJobsPage(page: number): Promise<EmployerJobsPage> {
     !isRecord(result) ||
     !Array.isArray(result.data) ||
     !result.data.every(isEmployerJob) ||
-    !isRecord(result.meta)
+    !isEmployerJobsMeta(result.meta)
   ) {
     throw new JobApiError("The job service returned invalid job data.");
   }
