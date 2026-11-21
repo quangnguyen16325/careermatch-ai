@@ -1,4 +1,4 @@
-import { refreshWorkspaceAccessToken } from "../../auth/workspaceSession";
+import { refreshWorkspaceAccessToken, WorkspaceSessionError } from "../../auth/workspaceSession";
 import { normalizeEmployerJobsQuery } from "./jobListUtils";
 import type {
   EmployerJobListItem,
@@ -25,6 +25,17 @@ function isRecord(value: unknown): value is JsonObject {
 }
 
 function isJob(value: unknown): value is EmployerJobListItem {
+  const validCategory = (category: unknown) => category === null || (
+    isRecord(category) && typeof category.id === "string" && typeof category.name === "string"
+  );
+  const validSkill = (entry: unknown) => isRecord(entry) &&
+    typeof entry.skillId === "string" &&
+    typeof entry.required === "boolean" &&
+    typeof entry.weight === "number" &&
+    entry.weight >= 0.1 && entry.weight <= 10 &&
+    isRecord(entry.skill) && typeof entry.skill.id === "string" && typeof entry.skill.name === "string";
+  const validDate = (date: unknown) => typeof date === "string" && !Number.isNaN(Date.parse(date));
+
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
@@ -32,14 +43,14 @@ function isJob(value: unknown): value is EmployerJobListItem {
     typeof value.description === "string" &&
     ["DRAFT", "PENDING_APPROVAL", "PUBLISHED", "REJECTED", "CLOSED"].includes(String(value.status)) &&
     (typeof value.location === "string" || value.location === null) &&
-    (typeof value.workMode === "string" || value.workMode === null) &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string" &&
-    (typeof value.publishedAt === "string" || value.publishedAt === null) &&
-    (isRecord(value.category) || value.category === null) &&
-    Array.isArray(value.skills) &&
+    (["ONSITE", "HYBRID", "REMOTE"].includes(String(value.workMode)) || value.workMode === null) &&
+    validDate(value.createdAt) &&
+    validDate(value.updatedAt) &&
+    (validDate(value.publishedAt) || value.publishedAt === null) &&
+    validCategory(value.category) &&
+    Array.isArray(value.skills) && value.skills.every(validSkill) &&
     isRecord(value._count) &&
-    Number.isInteger(value._count.applications)
+    Number.isInteger(value._count.applications) && Number(value._count.applications) >= 0
   );
 }
 
@@ -71,7 +82,7 @@ async function authenticatedRequest(path: string, method: "GET" | "POST", signal
   try {
     token = await refreshWorkspaceAccessToken();
   } catch (error) {
-    const message = error instanceof Error && error.message.includes("401")
+    const message = error instanceof WorkspaceSessionError && error.status === 401
       ? "Your session has expired. Please sign in again."
       : "Could not verify your session. Try again.";
     throw new EmployerJobsApiError(message);
@@ -115,6 +126,6 @@ export async function closeEmployerJob(jobId: string): Promise<EmployerJobListIt
   const response = await authenticatedRequest(`/jobs/${encodeURIComponent(jobId)}/close`, "POST");
   if (!response.ok) throw new EmployerJobsApiError(failureMessage(response.status, "close"), response.status);
   const result: unknown = await readJson(response);
-  if (!isJob(result)) throw new EmployerJobsApiError("The job service returned invalid job data.");
+  if (!isJob(result) || result.status !== "CLOSED") throw new EmployerJobsApiError("The job service returned an invalid close result.");
   return result;
 }

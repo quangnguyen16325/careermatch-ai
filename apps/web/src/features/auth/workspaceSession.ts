@@ -6,7 +6,7 @@ type WorkspaceSessionResult =
 
 type JsonObject = Record<string, unknown>;
 
-class WorkspaceSessionError extends Error {
+export class WorkspaceSessionError extends Error {
   readonly status?: number;
 
   constructor(message: string, status?: number) {

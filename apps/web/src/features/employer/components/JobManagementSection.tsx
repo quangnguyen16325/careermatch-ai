@@ -6,7 +6,7 @@ import { Modal } from "../../../components/ui/Modal";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { FeedbackMessage } from "./FeedbackMessage";
-import { getEmployerJobActions, getEmployerJobStatusLabel, getEmployerJobsPageTarget } from "../job-management/jobListUtils";
+import { canConfirmEmployerJobClose, getEmployerJobActions, getEmployerJobStatusLabel, getEmployerJobsPageTarget } from "../job-management/jobListUtils";
 import { EMPLOYER_JOB_STATUSES, type EmployerJobListItem, type EmployerJobsPage, type EmployerJobsQuery } from "../job-management/types";
 
 type JobManagementSectionProps = {
@@ -44,9 +44,15 @@ function JobManagementSection({ error, loading = false, onCloseJob, onQueryChang
   const [closeError, setCloseError] = useState("");
   const [notice, setNotice] = useState("");
   const closeInProgress = useRef(false);
+  const mounted = useRef(true);
   const [searchInput, setSearchInput] = useState(query.search ?? "");
   const jobs = page?.data ?? [];
   const meta = page?.meta;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -59,22 +65,23 @@ function JobManagementSection({ error, loading = false, onCloseJob, onQueryChang
   const nextPage = meta ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "next") : null;
 
   async function confirmClose() {
-    if (!closeTarget || closeInProgress.current || !getEmployerJobActions(closeTarget.status).includes("close")) return;
+    if (!closeTarget || !canConfirmEmployerJobClose(closeTarget.status, closeInProgress.current) || !getEmployerJobActions(closeTarget.status).includes("close")) return;
     closeInProgress.current = true;
     setClosing(true);
     setCloseError("");
     setNotice("");
     try {
       const refreshed = await onCloseJob(closeTarget.id);
+      if (!mounted.current) return;
       setNotice(refreshed
         ? `${closeTarget.title} was closed successfully.`
         : `${closeTarget.title} was closed successfully. The list could not be refreshed; the displayed status was updated from the server response.`);
       setCloseTarget(null);
     } catch (error) {
-      setCloseError(error instanceof Error ? error.message : "Could not close this job. Try again.");
+      if (mounted.current) setCloseError(error instanceof Error ? error.message : "Could not close this job. Try again.");
     } finally {
       closeInProgress.current = false;
-      setClosing(false);
+      if (mounted.current) setClosing(false);
     }
   }
 
@@ -156,7 +163,7 @@ function JobManagementSection({ error, loading = false, onCloseJob, onQueryChang
         <Modal aria-labelledby="close-job-title" aria-modal="true" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-7" onClose={() => { if (!closing) setCloseTarget(null); }} role="dialog">
           <h2 className="text-xl font-semibold text-slate-950" id="close-job-title">Close this job posting?</h2>
           <p className="mt-3 text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-900">{closeTarget.title}</span> will be closed. Applicants will no longer be able to apply. This action is confirmed by the job service.</p>
-          {closeError ? <div className="mt-4" role="alert"><FeedbackMessage tone="error">{closeError}</FeedbackMessage></div> : null}
+          {closeError ? <div className="mt-4 space-y-3" role="alert"><FeedbackMessage tone="error">{closeError}</FeedbackMessage><Button disabled={closing} onClick={() => { setCloseTarget(null); onRetry(); }} size="sm" variant="secondary">Reload jobs</Button></div> : null}
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button disabled={closing} onClick={() => setCloseTarget(null)} variant="secondary">Cancel</Button>
             <Button disabled={closing} onClick={() => void confirmClose()}>{closing ? "Closing…" : "Confirm close"}</Button>

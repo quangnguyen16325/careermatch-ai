@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  canConfirmEmployerJobClose,
   getEmployerJobActions,
   getEmployerJobStatusLabel,
   getEmployerJobsPageTarget,
+  isCurrentEmployerJobsQuery,
   normalizeEmployerJobsQuery,
 } from "./jobListUtils";
 
@@ -35,5 +37,16 @@ describe("employer job list helpers", () => {
     expect(getEmployerJobsPageTarget(3, 3, "next")).toBeNull();
     expect(getEmployerJobsPageTarget(2, 3, "next")).toBe(3);
     expect(getEmployerJobsPageTarget(2, 3, "previous")).toBe(1);
+  });
+
+  it("blocks close confirmation for unavailable states and while submitting", () => {
+    expect(canConfirmEmployerJobClose("PUBLISHED", false)).toBe(true);
+    expect(canConfirmEmployerJobClose("PUBLISHED", true)).toBe(false);
+    expect(canConfirmEmployerJobClose("CLOSED", false)).toBe(false);
+  });
+
+  it("compares normalized queries so stale results can be ignored", () => {
+    expect(isCurrentEmployerJobsQuery({ page: 1, search: " engineer " }, { page: 1, search: "engineer" })).toBe(true);
+    expect(isCurrentEmployerJobsQuery({ page: 1, status: "DRAFT" }, { page: 2, status: "DRAFT" })).toBe(false);
   });
 });

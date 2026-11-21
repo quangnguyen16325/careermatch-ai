@@ -41,11 +41,28 @@ describe("listEmployerJobs", () => {
     await expect(listEmployerJobs()).rejects.toMatchObject({ message: "The job service returned invalid job data." });
   });
 
+  it("rejects malformed skill relations in a list response", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(response({ data: [{ ...job, skills: [{}] }], meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 } })));
+    await expect(listEmployerJobs()).rejects.toMatchObject({ message: "The job service returned invalid job data." });
+  });
+
   it("reports authorization errors without exposing backend details", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
       .mockResolvedValueOnce(response({ message: "sensitive internal details" }, 403)));
     await expect(listEmployerJobs()).rejects.toMatchObject({ message: "You do not have permission to view these jobs.", status: 403 });
+  });
+
+  it("surfaces expired sessions and network failures as safe messages", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({ code: "INVALID_REFRESH_TOKEN" }, 401)));
+    await expect(listEmployerJobs()).rejects.toMatchObject({ message: "Your session has expired. Please sign in again." });
+
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
+      .mockRejectedValueOnce(new TypeError("network unreachable")));
+    await expect(listEmployerJobs()).rejects.toMatchObject({ message: "Could not connect to the job service." });
   });
 });
 
@@ -73,5 +90,12 @@ describe("closeEmployerJob", () => {
       .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
       .mockResolvedValueOnce(response({ code: "INVALID_STATE_TRANSITION" }, 400)));
     await expect(closeEmployerJob("job-1")).rejects.toMatchObject({ status: 400, message: "This job can no longer be closed. Reload the list and check its current status." });
+  });
+
+  it("rejects a successful HTTP response when the returned job is not closed", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(response(job)));
+    await expect(closeEmployerJob("job-1")).rejects.toMatchObject({ message: "The job service returned an invalid close result." });
   });
 });

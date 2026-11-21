@@ -6,6 +6,7 @@ import { EmployerWorkspaceHeader } from "../components/EmployerWorkspaceHeader";
 import { JobManagementSection } from "../components/JobManagementSection";
 import { mockCompanyProfile } from "../data/mockEmployerData";
 import { closeEmployerJob, listEmployerJobs, EmployerJobsApiError } from "../job-management/jobManagementApi";
+import { isCurrentEmployerJobsQuery } from "../job-management/jobListUtils";
 import type { CompanyProfile } from "../types";
 import type { EmployerJobsPage, EmployerJobsQuery } from "../job-management/types";
 
@@ -17,6 +18,17 @@ function EmployerCompanyJobsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [query, setQuery] = useState<EmployerJobsQuery>({ page: 1, pageSize: 20 });
   const requestVersion = useRef(0);
+  const queryRef = useRef(query);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const retryJobs = useCallback(() => {
     setLoadingJobs(true);
@@ -56,21 +68,30 @@ function EmployerCompanyJobsPage() {
   }, []);
 
   const closeJob = useCallback(async (jobId: string) => {
-    const updatedJob = await closeEmployerJob(jobId);
-    setJobsPage((current) => current ? {
-      ...current,
-      data: current.data.map((job) => job.id === jobId ? updatedJob : job),
-    } : current);
+    let activeVersion = ++requestVersion.current;
+    const queryAtStart = query;
     setLoadingJobs(true);
     setJobsError("");
     try {
-      const refreshed = await listEmployerJobs(query);
-      setJobsPage(refreshed);
-      return true;
-    } catch {
-      return false;
+      const updatedJob = await closeEmployerJob(jobId);
+      if (!mountedRef.current) return false;
+      setJobsPage((current) => current ? {
+        ...current,
+        data: current.data.map((job) => job.id === jobId ? updatedJob : job),
+      } : current);
+      if (!isCurrentEmployerJobsQuery(queryAtStart, queryRef.current)) return true;
+      activeVersion = ++requestVersion.current;
+      try {
+        const refreshed = await listEmployerJobs(queryAtStart);
+        if (mountedRef.current && activeVersion === requestVersion.current && isCurrentEmployerJobsQuery(queryAtStart, queryRef.current)) {
+          setJobsPage(refreshed);
+        }
+        return true;
+      } catch {
+        return false;
+      }
     } finally {
-      setLoadingJobs(false);
+      if (mountedRef.current && activeVersion === requestVersion.current) setLoadingJobs(false);
     }
   }, [query]);
 

@@ -64,3 +64,19 @@ export function getEmployerJobsPageTarget(
   if (direction === "previous") return currentPage > 1 ? currentPage - 1 : null;
   return currentPage < totalPages ? currentPage + 1 : null;
 }
+
+export function canConfirmEmployerJobClose(
+  status: EmployerJobStatus,
+  submitting: boolean,
+): boolean {
+  return status === "PUBLISHED" && !submitting;
+}
+
+export function isCurrentEmployerJobsQuery(
+  request: EmployerJobsQuery,
+  current: EmployerJobsQuery,
+): boolean {
+  const left = normalizeEmployerJobsQuery(request);
+  const right = normalizeEmployerJobsQuery(current);
+  return left.page === right.page && left.pageSize === right.pageSize && left.search === right.search && left.status === right.status;
+}
