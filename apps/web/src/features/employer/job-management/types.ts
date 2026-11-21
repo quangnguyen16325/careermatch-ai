@@ -9,11 +9,7 @@ export const EMPLOYER_JOB_STATUSES = [
 export type EmployerJobStatus = (typeof EMPLOYER_JOB_STATUSES)[number];
 
 export type EmployerJobAction =
-  | "edit"
-  | "submit"
-  | "withdraw"
-  | "close"
-  | "delete";
+  "edit" | "submit" | "withdraw" | "close" | "delete";
 
 export type EmployerJobListItem = {
   id: string;

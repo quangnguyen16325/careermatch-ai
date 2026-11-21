@@ -10,7 +10,16 @@ import {
 
 describe("employer job list helpers", () => {
   it("maps every backend status to a human-readable label", () => {
-    expect(getEmployerJobStatusLabel("PENDING_APPROVAL")).toBe("Pending approval");
+    expect(getEmployerJobStatusLabel("PENDING_APPROVAL")).toBe(
+      "Pending approval",
+    );
+    expect(getEmployerJobActions("DRAFT")).toEqual([
+      "edit",
+      "submit",
+      "delete",
+    ]);
+    expect(getEmployerJobActions("PENDING_APPROVAL")).toEqual(["withdraw"]);
+    expect(getEmployerJobActions("REJECTED")).toEqual(["edit"]);
   });
 
   it("allows closing only published jobs", () => {
@@ -20,13 +29,22 @@ describe("employer job list helpers", () => {
   });
 
   it("normalizes pagination and optional query values to the API contract", () => {
-    expect(normalizeEmployerJobsQuery({ page: -1, pageSize: 500, search: "  designer ", status: "DRAFT" })).toEqual({
+    expect(
+      normalizeEmployerJobsQuery({
+        page: -1,
+        pageSize: 500,
+        search: "  designer ",
+        status: "DRAFT",
+      }),
+    ).toEqual({
       page: 1,
       pageSize: 100,
       search: "designer",
       status: "DRAFT",
     });
-    expect(normalizeEmployerJobsQuery({ search: "   ", status: "UNKNOWN" as never })).toEqual({
+    expect(
+      normalizeEmployerJobsQuery({ search: "   ", status: "UNKNOWN" as never }),
+    ).toEqual({
       page: 1,
       pageSize: 20,
     });
@@ -46,7 +64,17 @@ describe("employer job list helpers", () => {
   });
 
   it("compares normalized queries so stale results can be ignored", () => {
-    expect(isCurrentEmployerJobsQuery({ page: 1, search: " engineer " }, { page: 1, search: "engineer" })).toBe(true);
-    expect(isCurrentEmployerJobsQuery({ page: 1, status: "DRAFT" }, { page: 2, status: "DRAFT" })).toBe(false);
+    expect(
+      isCurrentEmployerJobsQuery(
+        { page: 1, search: " engineer " },
+        { page: 1, search: "engineer" },
+      ),
+    ).toBe(true);
+    expect(
+      isCurrentEmployerJobsQuery(
+        { page: 1, status: "DRAFT" },
+        { page: 2, status: "DRAFT" },
+      ),
+    ).toBe(false);
   });
 });

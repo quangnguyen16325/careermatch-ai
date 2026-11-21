@@ -15,7 +15,10 @@ export class WorkspaceSessionError extends Error {
   }
 }
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(
+  /\/+$/,
+  "",
+);
 let pendingSession: Promise<WorkspaceSessionResult> | null = null;
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -36,10 +39,20 @@ async function refreshWorkspaceAccessToken(): Promise<string> {
     credentials: "include",
     method: "POST",
   });
-  if (!refreshResponse.ok) throw new WorkspaceSessionError(`Session refresh failed (${refreshResponse.status}).`, refreshResponse.status);
+  if (!refreshResponse.ok)
+    throw new WorkspaceSessionError(
+      `Session refresh failed (${refreshResponse.status}).`,
+      refreshResponse.status,
+    );
   const payload = await readJson(refreshResponse);
-  if (!isJsonObject(payload) || typeof payload.accessToken !== "string" || payload.tokenType !== "Bearer") {
-    throw new WorkspaceSessionError("Session refresh returned an invalid access token.");
+  if (
+    !isJsonObject(payload) ||
+    typeof payload.accessToken !== "string" ||
+    payload.tokenType !== "Bearer"
+  ) {
+    throw new WorkspaceSessionError(
+      "Session refresh returned an invalid access token.",
+    );
   }
   return payload.accessToken;
 }
@@ -58,13 +71,18 @@ async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
     if (!userResponse.ok) return { status: "unavailable" };
 
     const userPayload = await readJson(userResponse);
-    if (!isJsonObject(userPayload) || typeof userPayload.role !== "string" || !userPayload.role.trim()) {
+    if (
+      !isJsonObject(userPayload) ||
+      typeof userPayload.role !== "string" ||
+      !userPayload.role.trim()
+    ) {
       return { status: "unavailable" };
     }
 
     return { status: "authenticated", role: userPayload.role };
   } catch (error) {
-    if (error instanceof WorkspaceSessionError && error.status === 401) return { status: "unauthenticated" };
+    if (error instanceof WorkspaceSessionError && error.status === 401)
+      return { status: "unauthenticated" };
     return { status: "unavailable" };
   }
 }
