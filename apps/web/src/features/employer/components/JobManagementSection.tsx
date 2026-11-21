@@ -1,19 +1,21 @@
-import { useState } from "react";
-import { BriefcaseBusiness, CalendarDays, MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BriefcaseBusiness, CalendarDays, MapPin, Search } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { Modal } from "../../../components/ui/Modal";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { FeedbackMessage } from "./FeedbackMessage";
-import { getEmployerJobStatusLabel } from "../job-management/jobListUtils";
-import type { EmployerJobListItem, EmployerJobsPage } from "../job-management/types";
+import { getEmployerJobStatusLabel, getEmployerJobsPageTarget } from "../job-management/jobListUtils";
+import { EMPLOYER_JOB_STATUSES, type EmployerJobListItem, type EmployerJobsPage, type EmployerJobsQuery } from "../job-management/types";
 
 type JobManagementSectionProps = {
   page: EmployerJobsPage | null;
   loading?: boolean;
   error?: string;
   onRetry: () => void;
+  query: EmployerJobsQuery;
+  onQueryChange: (query: Partial<EmployerJobsQuery>) => void;
 };
 
 function statusTone(status: EmployerJobListItem["status"]): StatusTone {
@@ -34,9 +36,21 @@ function formatDate(value: string | null) {
     : new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(date);
 }
 
-function JobManagementSection({ error, loading = false, onRetry, page }: JobManagementSectionProps) {
+function JobManagementSection({ error, loading = false, onQueryChange, onRetry, page, query }: JobManagementSectionProps) {
   const [selected, setSelected] = useState<EmployerJobListItem | null>(null);
+  const [searchInput, setSearchInput] = useState(query.search ?? "");
   const jobs = page?.data ?? [];
+  const meta = page?.meta;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      if (searchInput.trim() !== (query.search ?? "")) onQueryChange({ search: searchInput.trim() || undefined, page: 1 });
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [onQueryChange, query.search, searchInput]);
+
+  const previousPage = meta ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "previous") : null;
+  const nextPage = meta ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "next") : null;
 
   return (
     <section aria-labelledby="job-management-heading" className="space-y-5">
@@ -46,6 +60,20 @@ function JobManagementSection({ error, loading = false, onRetry, page }: JobMana
         title="Job management"
       />
       <h2 className="sr-only" id="job-management-heading">Job management</h2>
+      <Card as="div" padding="sm" className="flex flex-col gap-3 sm:flex-row">
+        <label className="relative block min-w-0 flex-1">
+          <span className="sr-only">Search job titles</span>
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+          <input className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setSearchInput(event.target.value)} placeholder="Search job titles" type="search" value={searchInput} />
+        </label>
+        <label className="block sm:w-56">
+          <span className="sr-only">Filter jobs by status</span>
+          <select aria-label="Filter jobs by status" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => onQueryChange({ status: event.target.value ? event.target.value as EmployerJobsQuery["status"] : undefined, page: 1 })} value={query.status ?? ""}>
+            <option value="">All statuses</option>
+            {EMPLOYER_JOB_STATUSES.map((status) => <option key={status} value={status}>{getEmployerJobStatusLabel(status)}</option>)}
+          </select>
+        </label>
+      </Card>
       {loading ? <FeedbackMessage tone="loading">Loading job postings...</FeedbackMessage> : null}
       {error ? (
         <div className="space-y-3" role="alert">
@@ -82,9 +110,18 @@ function JobManagementSection({ error, loading = false, onRetry, page }: JobMana
       {!loading && !error && page && jobs.length === 0 ? (
         <Card className="py-12 text-center">
           <BriefcaseBusiness className="mx-auto size-10 text-slate-400" aria-hidden="true" />
-          <h3 className="mt-4 text-lg font-semibold text-slate-950">No job postings yet</h3>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">Your job postings will appear here after they have been created.</p>
+          <h3 className="mt-4 text-lg font-semibold text-slate-950">{query.search || query.status ? "No matching jobs" : "No job postings yet"}</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">{query.search || query.status ? "Try another search or status filter." : "Your job postings will appear here after they have been created."}</p>
         </Card>
+      ) : null}
+      {!loading && !error && meta ? (
+        <div className="flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <span aria-live="polite">{meta.total} job{meta.total === 1 ? "" : "s"} · Page {meta.page} of {Math.max(meta.totalPages, 1)}</span>
+          <div className="flex gap-2">
+            <Button disabled={previousPage === null} onClick={() => previousPage && onQueryChange({ page: previousPage })} size="sm" variant="secondary">Previous</Button>
+            <Button disabled={nextPage === null} onClick={() => nextPage && onQueryChange({ page: nextPage })} size="sm" variant="secondary">Next</Button>
+          </div>
+        </div>
       ) : null}
       {selected ? <JobDetailDialog job={selected} onClose={() => setSelected(null)} /> : null}
     </section>

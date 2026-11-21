@@ -54,3 +54,13 @@ export function normalizeEmployerJobsQuery(
     ...(isEmployerJobStatus(query.status) ? { status: query.status } : {}),
   };
 }
+
+export function getEmployerJobsPageTarget(
+  currentPage: number,
+  totalPages: number,
+  direction: "previous" | "next",
+): number | null {
+  if (!Number.isInteger(currentPage) || !Number.isInteger(totalPages) || totalPages < 1) return null;
+  if (direction === "previous") return currentPage > 1 ? currentPage - 1 : null;
+  return currentPage < totalPages ? currentPage + 1 : null;
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getEmployerJobActions,
   getEmployerJobStatusLabel,
+  getEmployerJobsPageTarget,
   normalizeEmployerJobsQuery,
 } from "./jobListUtils";
 
@@ -27,5 +28,12 @@ describe("employer job list helpers", () => {
       page: 1,
       pageSize: 20,
     });
+  });
+
+  it("does not navigate outside the available page range", () => {
+    expect(getEmployerJobsPageTarget(1, 3, "previous")).toBeNull();
+    expect(getEmployerJobsPageTarget(3, 3, "next")).toBeNull();
+    expect(getEmployerJobsPageTarget(2, 3, "next")).toBe(3);
+    expect(getEmployerJobsPageTarget(2, 3, "previous")).toBe(1);
   });
 });
