@@ -9,6 +9,7 @@ import {
   type CareerCategoryOption,
   type CreateJobDraftInput,
   type JobDraftFieldErrors,
+  type UpdateJobInput,
   type JobWorkMode,
 } from "../job-editor/types";
 import { prepareJobDraftSubmission } from "../job-editor/validation";
@@ -20,7 +21,7 @@ type JobEditorFormProps = {
   initialSkills?: SelectedJobSkill[];
   categories?: CareerCategoryOption[];
   onCancel: () => void;
-  onSubmitDraft?: (draft: CreateJobDraftInput) => void;
+  onSubmitDraft?: (draft: CreateJobDraftInput | UpdateJobInput) => Promise<void>;
 };
 
 const WORK_MODE_LABELS: Record<JobWorkMode, string> = {
@@ -40,6 +41,8 @@ function JobEditorForm({
     title: job?.title ?? "",
     description: job?.description ?? "",
     location: job?.location || undefined,
+    workMode: job?.workMode ?? undefined,
+    categoryId: job?.categoryId ?? undefined,
     skills: initialSkills.map(({ id, required, weight }) => ({
       skillId: id,
       required,
@@ -54,6 +57,8 @@ function JobEditorForm({
   );
   const [errors, setErrors] = useState<JobDraftFieldErrors>({});
   const [submitNotice, setSubmitNotice] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   function updateField<K extends keyof CreateJobDraftInput>(
@@ -63,13 +68,16 @@ function JobEditorForm({
     setForm((current) => ({ ...current, [name]: value }));
     setErrors((current) => ({ ...current, [name]: undefined }));
     setSubmitNotice("");
+    setSubmitError("");
   }
 
-  function submitDraft(event: FormEvent<HTMLFormElement>) {
+  async function submitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const submission = prepareJobDraftSubmission(form);
     setErrors(submission.valid ? {} : submission.errors);
     setSubmitNotice("");
+    setSubmitError("");
 
     if (!submission.valid) {
       formRef.current
@@ -78,12 +86,32 @@ function JobEditorForm({
       return;
     }
 
-    onSubmitDraft?.(submission.payload);
-    setSubmitNotice(
-      onSubmitDraft
-        ? "Draft passed validation and was sent to the submission handler. No server save is confirmed."
-        : "Draft passed validation, but has not been saved. API integration is coming in a later step.",
-    );
+    if (!onSubmitDraft) {
+      setSubmitError("Job saving is unavailable. Please try again later.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload: CreateJobDraftInput | UpdateJobInput = job
+        ? {
+            ...submission.payload,
+            location: submission.payload.location ?? null,
+            workMode: submission.payload.workMode ?? null,
+            categoryId: submission.payload.categoryId ?? null,
+          }
+        : submission.payload;
+      await onSubmitDraft(payload);
+      setSubmitNotice("Job draft saved successfully.");
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "The job draft could not be saved. Please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   const inputClass = (hasError: boolean) =>
@@ -256,18 +284,24 @@ function JobEditorForm({
             {submitNotice}
           </p>
         ) : null}
+        {submitError ? (
+          <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-800" role="alert">
+            {submitError}
+          </p>
+        ) : null}
 
         <div className="mt-6 flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <Button
             icon={<X size={16} />}
             onClick={onCancel}
+            disabled={saving}
             type="button"
             variant="ghost"
           >
             Cancel
           </Button>
-          <Button icon={<Save size={16} />} type="submit">
-            Save draft
+          <Button disabled={saving} icon={<Save size={16} />} type="submit">
+            {saving ? "Saving..." : "Save draft"}
           </Button>
         </div>
       </form>

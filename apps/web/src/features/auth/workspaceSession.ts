@@ -6,6 +6,16 @@ type WorkspaceSessionResult =
 
 type JsonObject = Record<string, unknown>;
 
+class WorkspaceSessionError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "WorkspaceSessionError";
+    this.status = status;
+  }
+}
+
 const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
 let pendingSession: Promise<WorkspaceSessionResult> | null = null;
 
@@ -19,6 +29,39 @@ async function readJson(response: Response): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+async function getWorkspaceAccessToken(): Promise<string> {
+  let refreshResponse: Response;
+  try {
+    refreshResponse = await fetch(`${apiBaseUrl}/auth/refresh`, {
+      cache: "no-store",
+      credentials: "include",
+      method: "POST",
+    });
+  } catch {
+    throw new WorkspaceSessionError("Could not verify your session. Try again.");
+  }
+
+  if (!refreshResponse.ok) {
+    throw new WorkspaceSessionError(
+      refreshResponse.status === 401
+        ? "Your session has expired. Sign in again."
+        : "Could not verify your session. Try again.",
+      refreshResponse.status,
+    );
+  }
+
+  const payload = await readJson(refreshResponse);
+  if (
+    !isJsonObject(payload) ||
+    typeof payload.accessToken !== "string" ||
+    payload.tokenType !== "Bearer"
+  ) {
+    throw new WorkspaceSessionError("Could not verify your session. Try again.");
+  }
+
+  return payload.accessToken;
 }
 
 async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
@@ -69,5 +112,10 @@ function getWorkspaceSession() {
   return request;
 }
 
-export { getWorkspaceSession, resolveWorkspaceSession };
+export {
+  getWorkspaceAccessToken,
+  getWorkspaceSession,
+  resolveWorkspaceSession,
+  WorkspaceSessionError,
+};
 export type { WorkspaceSessionResult };

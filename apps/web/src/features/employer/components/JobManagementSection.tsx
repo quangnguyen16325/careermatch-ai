@@ -5,7 +5,7 @@ import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import type { JobPosting, JobStatus } from "../types";
-import type { CreateJobDraftInput } from "../job-editor/types";
+import type { CreateJobDraftInput, UpdateJobInput } from "../job-editor/types";
 import { FeedbackMessage } from "./FeedbackMessage";
 import { JobDetailsDialog } from "./JobDetailsDialog";
 import { JobEditorForm } from "./JobEditorForm";
@@ -14,14 +14,19 @@ type JobManagementSectionProps = {
   jobs: JobPosting[];
   loading?: boolean;
   error?: string;
-  onSubmitDraft?: (draft: CreateJobDraftInput) => void;
-  onStatusChange: (job: JobPosting, status: JobStatus) => void;
+  onSubmitDraft?: (
+    draft: CreateJobDraftInput | UpdateJobInput,
+    job?: JobPosting,
+  ) => Promise<string | void>;
+  onLoadJob?: (job: JobPosting) => Promise<JobPosting>;
+  onStatusChange?: (job: JobPosting, status: JobStatus) => void;
+  onRetry?: () => void;
 };
 
 type FilterStatus = "All statuses" | JobStatus | "Expired";
 
 function isExpired(job: JobPosting) {
-  return job.status === "Published" && Boolean(job.deadline) && job.deadline < new Date().toISOString().slice(0, 10);
+  return job.status === "Published" && Boolean(job.deadline) && job.deadline! < new Date().toISOString().slice(0, 10);
 }
 
 function statusLabel(job: JobPosting) {
@@ -34,6 +39,8 @@ function statusTone(job: JobPosting): StatusTone {
     case "Expired": return "warning";
     case "Draft": return "info";
     case "Closed": return "neutral";
+    case "Pending approval": return "warning";
+    case "Rejected": return "danger";
   }
 }
 
@@ -42,12 +49,17 @@ function JobManagementSection({
   jobs,
   loading = false,
   onSubmitDraft,
+  onLoadJob,
   onStatusChange,
+  onRetry,
 }: JobManagementSectionProps) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("All statuses");
   const [editing, setEditing] = useState<JobPosting | "new" | null>(null);
   const [selected, setSelected] = useState<JobPosting | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [savedNotice, setSavedNotice] = useState("");
 
   const filteredJobs = useMemo(() => jobs.filter((job) => {
     const matchesTitle = job.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
@@ -57,26 +69,69 @@ function JobManagementSection({
 
   function editFromDetails(job: JobPosting) {
     setSelected(null);
+    setSavedNotice("");
+    setEditError("");
+    if (!onLoadJob) {
+      setEditing(job);
+      return;
+    }
     setEditing(job);
+    setEditLoading(true);
+    void onLoadJob(job)
+      .then(setEditing)
+      .catch((error: unknown) => {
+        setEditError(
+          error instanceof Error ? error.message : "Could not load this job.",
+        );
+      })
+      .finally(() => setEditLoading(false));
   }
 
   return (
     <section aria-labelledby="job-management-heading" className="space-y-5">
       <PageHeader
-        actions={!editing ? <Button onClick={() => setEditing("new")} icon={<Plus size={17} />}>Create job</Button> : undefined}
+        actions={!editing ? <Button onClick={() => { setSavedNotice(""); setEditing("new"); }} icon={<Plus size={17} />}>Create job</Button> : undefined}
         description="Create openings, keep listings current, and review their publication status."
         eyebrow="Hiring"
         title="Job management"
       />
       <h2 className="sr-only" id="job-management-heading">Job management</h2>
-      {error ? <FeedbackMessage tone="error">{error}</FeedbackMessage> : null}
+      {error ? (
+        <div className="space-y-2">
+          <FeedbackMessage tone="error">{error}</FeedbackMessage>
+          {onRetry ? <Button onClick={onRetry} variant="secondary">Retry loading jobs</Button> : null}
+        </div>
+      ) : null}
       {loading ? <FeedbackMessage tone="loading">Loading job postings...</FeedbackMessage> : null}
+      {savedNotice ? <FeedbackMessage tone="success">{savedNotice}</FeedbackMessage> : null}
       {!loading && !error && editing ? (
-        <JobEditorForm
-          job={editing === "new" ? undefined : editing}
-          onCancel={() => setEditing(null)}
-          onSubmitDraft={onSubmitDraft}
-        />
+        <>
+          {editLoading ? <FeedbackMessage tone="loading">Loading job draft...</FeedbackMessage> : null}
+          {editError ? (
+            <div className="space-y-2">
+              <FeedbackMessage tone="error">{editError}</FeedbackMessage>
+              <Button className="ml-3" onClick={() => editing !== "new" && editFromDetails(editing)} size="sm" variant="secondary">Retry</Button>
+            </div>
+          ) : null}
+          {!editLoading && !editError ? (
+            <JobEditorForm
+              categories={
+                editing !== "new" && editing.categoryId && editing.department
+                  ? [{ id: editing.categoryId, name: editing.department }]
+                  : []
+              }
+              initialSkills={editing === "new" ? [] : editing.requiredSkills ?? []}
+              job={editing === "new" ? undefined : editing}
+              onCancel={() => setEditing(null)}
+              onSubmitDraft={async (draft) => {
+                if (!onSubmitDraft) throw new Error("Job saving is unavailable.");
+                const notice = await onSubmitDraft(draft, editing === "new" ? undefined : editing);
+                setSavedNotice(notice || "Job draft saved successfully.");
+                setEditing(null);
+              }}
+            />
+          ) : null}
+        </>
       ) : null}
       {!loading && !error && !editing ? (
         <>
@@ -89,7 +144,7 @@ function JobManagementSection({
             <label className="block sm:w-48">
               <span className="sr-only">Filter jobs by status</span>
               <select className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setStatusFilter(event.target.value as FilterStatus)} value={statusFilter}>
-                {(["All statuses", "Published", "Draft", "Closed", "Expired"] satisfies FilterStatus[]).map((status) => <option key={status}>{status}</option>)}
+                {(["All statuses", "Published", "Draft", "Pending approval", "Rejected", "Closed", "Expired"] satisfies FilterStatus[]).map((status) => <option key={status}>{status}</option>)}
               </select>
             </label>
           </Card>
@@ -102,7 +157,7 @@ function JobManagementSection({
               <BriefcaseBusiness className="mx-auto size-10 text-slate-400" aria-hidden="true" />
               <h3 className="mt-4 text-lg font-semibold text-slate-950">{jobs.length ? "No matching jobs" : "No job postings yet"}</h3>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">{jobs.length ? "Try another title or status filter." : "Create your first job posting to start meeting qualified candidates."}</p>
-              {!jobs.length ? <Button className="mt-5" onClick={() => setEditing("new")} icon={<Plus size={16} />}>Create your first job</Button> : null}
+              {!jobs.length ? <Button className="mt-5" onClick={() => { setSavedNotice(""); setEditing("new"); }} icon={<Plus size={16} />}>Create your first job</Button> : null}
             </Card>
           )}
         </>
@@ -112,9 +167,9 @@ function JobManagementSection({
   );
 }
 
-function JobRow({ job, onDetails, onStatusChange }: { job: JobPosting; onDetails: () => void; onStatusChange: (job: JobPosting, status: JobStatus) => void }) {
+function JobRow({ job, onDetails, onStatusChange }: { job: JobPosting; onDetails: () => void; onStatusChange?: (job: JobPosting, status: JobStatus) => void }) {
   const closed = job.status === "Closed";
-  const canChangeStatus = job.status !== "Draft";
+  const canChangeStatus = job.status === "Published" || job.status === "Closed";
 
   return (
     <Card as="article" padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -131,7 +186,7 @@ function JobRow({ job, onDetails, onStatusChange }: { job: JobPosting; onDetails
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
         <Button onClick={onDetails} size="sm" variant="secondary">View details</Button>
-        {canChangeStatus ? (
+        {onStatusChange && canChangeStatus ? (
           <Button onClick={() => onStatusChange(job, closed ? "Published" : "Closed")} size="sm" variant={closed ? "primary" : "ghost"}>
             {closed ? "Reopen" : "Close job"}
           </Button>
@@ -141,7 +196,7 @@ function JobRow({ job, onDetails, onStatusChange }: { job: JobPosting; onDetails
   );
 }
 
-function formatDate(value: string) {
+function formatDate(value?: string) {
   if (!value) return "Not set";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 }

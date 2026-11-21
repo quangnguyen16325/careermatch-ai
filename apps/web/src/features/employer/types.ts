@@ -11,19 +11,33 @@ export type CompanyProfile = {
   description: string;
 };
 
-export type JobStatus = "Published" | "Draft" | "Closed";
+export type JobStatus =
+  | "Published"
+  | "Draft"
+  | "Closed"
+  | "Pending approval"
+  | "Rejected";
 export type EmploymentType = "Full-time" | "Part-time" | "Contract" | "Internship";
 
 export type JobPosting = {
   id: string;
   title: string;
-  department: string;
+  department?: string;
   location: string;
-  employmentType: EmploymentType;
-  salary: string;
-  deadline: string;
+  employmentType?: EmploymentType;
+  salary?: string;
+  deadline?: string;
   status: JobStatus;
   description: string;
-  requirements: string;
-  benefits: string;
+  requirements?: string;
+  benefits?: string;
+  categoryId?: string | null;
+  workMode?: "ONSITE" | "HYBRID" | "REMOTE" | null;
+  requiredSkills?: Array<{
+    id: string;
+    name: string;
+    normalizedName: string;
+    required: boolean;
+    weight: number;
+  }>;
 };
