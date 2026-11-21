@@ -1,8 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { CompanyVerificationDetailDialog } from "./CompanyVerificationQueuePage";
-import { getQueueErrorMessage } from "../company-verification/companyVerificationErrors";
+import {
+  CompanyVerificationDecisionDialog,
+  CompanyVerificationDetailDialog,
+} from "./CompanyVerificationQueuePage";
 import type { CompanyVerificationQueueItem } from "../company-verification/types";
 
 const company: CompanyVerificationQueueItem = {
@@ -60,16 +62,36 @@ describe("CompanyVerificationDetailDialog", () => {
   });
 });
 
-describe("company verification queue errors", () => {
-  it("distinguishes a saved decision from a failed list refresh", () => {
-    expect(getQueueErrorMessage(new Error("network error"), true)).toMatch(
-      /decision was saved.*could not be refreshed/i,
+describe("CompanyVerificationDecisionDialog", () => {
+  it("renders an accessible rejection reason field and disabled pending actions", () => {
+    const markup = renderToStaticMarkup(
+      createElement(CompanyVerificationDecisionDialog, {
+        busy: true,
+        company,
+        error: "Decision failed",
+        onCancel: vi.fn(),
+        onRefresh: vi.fn(),
+        onReasonChange: vi.fn(),
+        onSubmit: vi.fn(),
+        reason: "Missing document",
+        status: "REJECTED",
+        validationError: "The reason is too short.",
+        canRefresh: true,
+      }),
     );
-  });
 
-  it("offers a retry-oriented message for a regular queue load failure", () => {
-    expect(getQueueErrorMessage(new Error("network error"))).toMatch(
-      /could not load.*retry/i,
+    expect(markup).toContain('role="alertdialog"');
+    expect(markup).toContain(
+      'aria-labelledby="company-verification-decision-title"',
     );
+    expect(markup).toContain('aria-invalid="true"');
+    expect(markup).toContain(
+      'aria-describedby="company-decision-reason-error"',
+    );
+    expect(markup).toContain('maxLength="1000"');
+    expect(markup).toContain("The reason is too short.");
+    expect(markup).toContain("Reload queue");
+    expect(markup).toContain("Submitting...");
+    expect(markup.match(/disabled=""/g)).toHaveLength(4);
   });
 });

@@ -24,6 +24,12 @@ import {
   getDecisionErrorMessage,
   getQueueErrorMessage,
 } from "../company-verification/companyVerificationErrors";
+import {
+  getAvailableDecisions,
+  getDecisionLabel,
+  isAllowedTransition,
+  isLatestQueueRequest,
+} from "../company-verification/companyVerificationWorkflow";
 import { validateCompanyVerificationDecision } from "../company-verification/validation";
 import type {
   CompanyVerificationDecision,
@@ -74,6 +80,7 @@ function CompanyVerificationQueuePage() {
   const submittingDecisionRef = useRef(false);
   const [successNotice, setSuccessNotice] = useState("");
   const decisionRefreshPendingRef = useRef(false);
+  const latestQueueRequestRef = useRef(0);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -85,6 +92,7 @@ function CompanyVerificationQueuePage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestId = ++latestQueueRequestRef.current;
 
     void getCompanyVerificationQueue(
       {
@@ -96,7 +104,14 @@ function CompanyVerificationQueuePage() {
       controller.signal,
     ).then(
       (result) => {
-        if (controller.signal.aborted) return;
+        if (
+          !isLatestQueueRequest(
+            requestId,
+            latestQueueRequestRef.current,
+            controller.signal.aborted,
+          )
+        )
+          return;
         if (page > 1 && page > result.meta.totalPages) {
           setPage(Math.max(1, result.meta.totalPages));
           setQueue({ status: "loading" });
@@ -106,7 +121,14 @@ function CompanyVerificationQueuePage() {
         decisionRefreshPendingRef.current = false;
       },
       (error: unknown) => {
-        if (controller.signal.aborted) return;
+        if (
+          !isLatestQueueRequest(
+            requestId,
+            latestQueueRequestRef.current,
+            controller.signal.aborted,
+          )
+        )
+          return;
         setQueue({
           status: "error",
           message: getQueueErrorMessage(
@@ -703,32 +725,6 @@ function getStatusTone(status: CompanyVerificationStatus): StatusTone {
   return "danger";
 }
 
-function getAvailableDecisions(
-  currentStatus: CompanyVerificationStatus,
-): CompanyVerificationDecision["status"][] {
-  if (currentStatus === "PENDING") return ["VERIFIED", "REJECTED"];
-  if (currentStatus === "VERIFIED") return ["REJECTED"];
-  return ["VERIFIED"];
-}
-
-function isAllowedTransition(
-  currentStatus: CompanyVerificationStatus,
-  nextStatus: CompanyVerificationDecision["status"],
-): boolean {
-  return getAvailableDecisions(currentStatus).includes(nextStatus);
-}
-
-function getDecisionLabel(
-  nextStatus: CompanyVerificationDecision["status"],
-  currentStatus: CompanyVerificationStatus,
-): string {
-  if (currentStatus === "VERIFIED" && nextStatus === "REJECTED")
-    return "Revoke verification";
-  if (currentStatus === "REJECTED" && nextStatus === "VERIFIED")
-    return "Verify again";
-  return nextStatus === "VERIFIED" ? "Approve" : "Reject";
-}
-
 function getDecisionValidationMessage(
   error: "reason-required" | "reason-too-short" | "reason-too-long",
 ): string {
@@ -748,6 +744,7 @@ function formatDate(value: string): string {
 }
 
 export {
+  CompanyVerificationDecisionDialog,
   CompanyVerificationDetailDialog,
   CompanyVerificationQueuePage,
 };

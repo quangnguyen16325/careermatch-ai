@@ -50,4 +50,32 @@ On Windows, use `pnpm.cmd` as the command prefix. Tests use Vitest. There is cur
 
 ## Data and integration status
 
-Employer, candidate, and admin business screens use local mock data and frontend state. Their business actions are not persisted to backend APIs. The protected workspace shell does call the authentication API endpoints described above. There is no login UI or browser end-to-end coverage yet. The workspace session request verifies identity for presentation; server-side authorization remains mandatory for protected data and actions.
+Employer, candidate, and most admin business screens use local mock data and frontend state. The Admin Company Verification Queue is an exception: it reads and updates company verification through the Admin Companies API described below. The protected workspace shell also calls the authentication endpoints above. There is no login UI or browser end-to-end coverage yet. The workspace session request verifies identity for presentation; server-side authorization remains mandatory for protected data and actions.
+
+## Admin Company Verification Queue
+
+The queue is available in the Admin workspace and is backed by the Admin Companies API. It supports searching by company name or tax code, filtering by verification status, pagination, viewing the company fields returned by the API, and making verification decisions. Queue results are not sourced from mock data.
+
+### API contract
+
+Both endpoints require an authenticated `ADMIN` role and use the current workspace session's Bearer access token:
+
+- `GET /api/v1/admin/companies?page=&pageSize=&status=&search=` returns `{ data, meta }`. `page` starts at 1, `pageSize` is 1–100 (default 20), `status` is an optional verification status, and `search` matches company name or tax code.
+- `PATCH /api/v1/admin/companies/:id/verify` accepts `{ "status": "VERIFIED" | "REJECTED", "reason"?: string }` and returns the updated company record. A successful decision causes the frontend to request the queue again; search and status filters are retained.
+
+The backend permits `PENDING → VERIFIED`, `PENDING → REJECTED`, `VERIFIED → REJECTED` (revoke verification), and `REJECTED → VERIFIED` (verify again). Repeating the current status is not allowed. Rejection requires a reason containing at least 10 characters after trimming. The DTO caps the reason at 1000 characters. The frontend validates these constraints before sending; the backend remains authoritative.
+
+The queue handles the documented `400` transition/reason errors, `401` unauthenticated, `403` forbidden, and `404` company-not-found responses, along with network and service failures. A stale transition or uncertain mutation outcome offers a queue reload. If PATCH succeeds but the subsequent GET fails, the interface distinguishes the saved decision from the stale list and offers retry without repeating the mutation.
+
+### Tests and manual QA
+
+Run the frontend checks from the repository root:
+
+```sh
+pnpm --filter web typecheck
+pnpm --filter web lint
+pnpm --filter web test
+pnpm --filter web build
+```
+
+Vitest covers API request/response handling, rejection-reason boundaries, supported status transitions, errors, and aborted GET responses. The repository does not configure a browser E2E or React DOM interaction test environment. Before release, manually verify the queue at mobile and desktop widths, keyboard navigation and Escape/focus behavior in details/decision dialogs, confirmation/disable behavior while submitting, and decision refresh/retry against an Admin session and running API.
