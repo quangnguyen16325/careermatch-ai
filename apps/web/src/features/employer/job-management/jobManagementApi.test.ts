@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listEmployerJobs } from "./jobManagementApi";
+import { closeEmployerJob, listEmployerJobs } from "./jobManagementApi";
 
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -46,5 +46,32 @@ describe("listEmployerJobs", () => {
       .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
       .mockResolvedValueOnce(response({ message: "sensitive internal details" }, 403)));
     await expect(listEmployerJobs()).rejects.toMatchObject({ message: "You do not have permission to view these jobs.", status: 403 });
+  });
+});
+
+describe("closeEmployerJob", () => {
+  it("uses the employer close endpoint and returns the server-confirmed job", async () => {
+    const closedJob = { ...job, status: "CLOSED" };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(response(closedJob));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(closeEmployerJob("job-1")).resolves.toMatchObject({ id: "job-1", status: "CLOSED" });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringMatching(/\/jobs\/job-1\/close$/), expect.objectContaining({ method: "POST", headers: { Authorization: "Bearer access" } }));
+  });
+
+  it("rejects an empty ID without sending a request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(closeEmployerJob("  ")).rejects.toMatchObject({ message: "A job ID is required before closing a posting." });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not report success when the backend rejects a stale close action", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response({ accessToken: "access", tokenType: "Bearer" }))
+      .mockResolvedValueOnce(response({ code: "INVALID_STATE_TRANSITION" }, 400)));
+    await expect(closeEmployerJob("job-1")).rejects.toMatchObject({ status: 400, message: "This job can no longer be closed. Reload the list and check its current status." });
   });
 });

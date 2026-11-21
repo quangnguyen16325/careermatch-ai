@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BriefcaseBusiness, CalendarDays, MapPin, Search } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
@@ -6,7 +6,7 @@ import { Modal } from "../../../components/ui/Modal";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import { FeedbackMessage } from "./FeedbackMessage";
-import { getEmployerJobStatusLabel, getEmployerJobsPageTarget } from "../job-management/jobListUtils";
+import { getEmployerJobActions, getEmployerJobStatusLabel, getEmployerJobsPageTarget } from "../job-management/jobListUtils";
 import { EMPLOYER_JOB_STATUSES, type EmployerJobListItem, type EmployerJobsPage, type EmployerJobsQuery } from "../job-management/types";
 
 type JobManagementSectionProps = {
@@ -14,6 +14,7 @@ type JobManagementSectionProps = {
   loading?: boolean;
   error?: string;
   onRetry: () => void;
+  onCloseJob: (jobId: string) => Promise<boolean>;
   query: EmployerJobsQuery;
   onQueryChange: (query: Partial<EmployerJobsQuery>) => void;
 };
@@ -36,8 +37,13 @@ function formatDate(value: string | null) {
     : new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(date);
 }
 
-function JobManagementSection({ error, loading = false, onQueryChange, onRetry, page, query }: JobManagementSectionProps) {
+function JobManagementSection({ error, loading = false, onCloseJob, onQueryChange, onRetry, page, query }: JobManagementSectionProps) {
   const [selected, setSelected] = useState<EmployerJobListItem | null>(null);
+  const [closeTarget, setCloseTarget] = useState<EmployerJobListItem | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState("");
+  const [notice, setNotice] = useState("");
+  const closeInProgress = useRef(false);
   const [searchInput, setSearchInput] = useState(query.search ?? "");
   const jobs = page?.data ?? [];
   const meta = page?.meta;
@@ -52,6 +58,26 @@ function JobManagementSection({ error, loading = false, onQueryChange, onRetry, 
   const previousPage = meta ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "previous") : null;
   const nextPage = meta ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "next") : null;
 
+  async function confirmClose() {
+    if (!closeTarget || closeInProgress.current || !getEmployerJobActions(closeTarget.status).includes("close")) return;
+    closeInProgress.current = true;
+    setClosing(true);
+    setCloseError("");
+    setNotice("");
+    try {
+      const refreshed = await onCloseJob(closeTarget.id);
+      setNotice(refreshed
+        ? `${closeTarget.title} was closed successfully.`
+        : `${closeTarget.title} was closed successfully. The list could not be refreshed; the displayed status was updated from the server response.`);
+      setCloseTarget(null);
+    } catch (error) {
+      setCloseError(error instanceof Error ? error.message : "Could not close this job. Try again.");
+    } finally {
+      closeInProgress.current = false;
+      setClosing(false);
+    }
+  }
+
   return (
     <section aria-labelledby="job-management-heading" className="space-y-5">
       <PageHeader
@@ -60,6 +86,7 @@ function JobManagementSection({ error, loading = false, onQueryChange, onRetry, 
         title="Job management"
       />
       <h2 className="sr-only" id="job-management-heading">Job management</h2>
+      {notice ? <FeedbackMessage tone="success">{notice}</FeedbackMessage> : null}
       <Card as="div" padding="sm" className="flex flex-col gap-3 sm:flex-row">
         <label className="relative block min-w-0 flex-1">
           <span className="sr-only">Search job titles</span>
@@ -102,6 +129,7 @@ function JobManagementSection({ error, loading = false, onQueryChange, onRetry, 
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Button aria-label={`View details for ${job.title}`} onClick={() => setSelected(job)} size="sm" variant="secondary">View details</Button>
+                {getEmployerJobActions(job.status).includes("close") ? <Button aria-label={`Close ${job.title}`} onClick={() => { setCloseTarget(job); setCloseError(""); }} size="sm" variant="ghost">Close job</Button> : null}
               </div>
             </Card>
           ))}
@@ -124,6 +152,17 @@ function JobManagementSection({ error, loading = false, onQueryChange, onRetry, 
         </div>
       ) : null}
       {selected ? <JobDetailDialog job={selected} onClose={() => setSelected(null)} /> : null}
+      {closeTarget ? (
+        <Modal aria-labelledby="close-job-title" aria-modal="true" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-7" onClose={() => { if (!closing) setCloseTarget(null); }} role="dialog">
+          <h2 className="text-xl font-semibold text-slate-950" id="close-job-title">Close this job posting?</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600"><span className="font-semibold text-slate-900">{closeTarget.title}</span> will be closed. Applicants will no longer be able to apply. This action is confirmed by the job service.</p>
+          {closeError ? <div className="mt-4" role="alert"><FeedbackMessage tone="error">{closeError}</FeedbackMessage></div> : null}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button disabled={closing} onClick={() => setCloseTarget(null)} variant="secondary">Cancel</Button>
+            <Button disabled={closing} onClick={() => void confirmClose()}>{closing ? "Closing…" : "Confirm close"}</Button>
+          </div>
+        </Modal>
+      ) : null}
     </section>
   );
 }

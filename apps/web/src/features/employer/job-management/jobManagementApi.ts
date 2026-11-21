@@ -57,12 +57,38 @@ async function readJson(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { return null; }
 }
 
-function failureMessage(status: number): string {
+function failureMessage(status: number, action: "list" | "close"): string {
   if (status === 401) return "Your session has expired. Please sign in again.";
-  if (status === 403) return "You do not have permission to view these jobs.";
-  if (status === 404) return "The job list is not available.";
+  if (status === 403) return action === "close" ? "You do not have permission to close this job." : "You do not have permission to view these jobs.";
+  if (status === 404) return action === "close" ? "This job could not be found." : "The job list is not available.";
+  if (status === 400) return "This job can no longer be closed. Reload the list and check its current status.";
   if (status >= 500) return "The job service is temporarily unavailable. Try again.";
   return "Could not load job postings. Try again.";
+}
+
+async function authenticatedRequest(path: string, method: "GET" | "POST", signal?: AbortSignal): Promise<Response> {
+  let token: string;
+  try {
+    token = await refreshWorkspaceAccessToken();
+  } catch (error) {
+    const message = error instanceof Error && error.message.includes("401")
+      ? "Your session has expired. Please sign in again."
+      : "Could not verify your session. Try again.";
+    throw new EmployerJobsApiError(message);
+  }
+
+  try {
+    return await fetch(`${apiBaseUrl}${path}`, {
+      cache: "no-store",
+      credentials: "omit",
+      headers: { Authorization: `Bearer ${token}` },
+      method,
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new EmployerJobsApiError("Could not connect to the job service.");
+  }
 }
 
 export async function listEmployerJobs(
@@ -74,32 +100,21 @@ export async function listEmployerJobs(
   if (query.search) params.set("search", query.search);
   if (query.status) params.set("status", query.status);
 
-  let token: string;
-  try {
-    token = await refreshWorkspaceAccessToken();
-  } catch (error) {
-    const message = error instanceof Error && error.message.includes("401")
-      ? "Your session has expired. Please sign in again."
-      : "Could not verify your session. Try again.";
-    throw new EmployerJobsApiError(message);
-  }
+  const response = await authenticatedRequest(`/jobs/my?${params.toString()}`, "GET", signal);
 
-  let response: Response;
-  try {
-    response = await fetch(`${apiBaseUrl}/jobs/my?${params.toString()}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-      signal,
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
-    throw new EmployerJobsApiError("Could not connect to the job service.");
-  }
-
-  if (!response.ok) throw new EmployerJobsApiError(failureMessage(response.status), response.status);
+  if (!response.ok) throw new EmployerJobsApiError(failureMessage(response.status, "list"), response.status);
   const result: unknown = await readJson(response);
   if (!isRecord(result) || !Array.isArray(result.data) || !result.data.every(isJob) || !isMeta(result.meta)) {
     throw new EmployerJobsApiError("The job service returned invalid job data.");
   }
   return result as EmployerJobsPage;
+}
+
+export async function closeEmployerJob(jobId: string): Promise<EmployerJobListItem> {
+  if (!jobId.trim()) throw new EmployerJobsApiError("A job ID is required before closing a posting.");
+  const response = await authenticatedRequest(`/jobs/${encodeURIComponent(jobId)}/close`, "POST");
+  if (!response.ok) throw new EmployerJobsApiError(failureMessage(response.status, "close"), response.status);
+  const result: unknown = await readJson(response);
+  if (!isJob(result)) throw new EmployerJobsApiError("The job service returned invalid job data.");
+  return result;
 }

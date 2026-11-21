@@ -5,7 +5,7 @@ import { CompanyProfileSection } from "../components/CompanyProfileSection";
 import { EmployerWorkspaceHeader } from "../components/EmployerWorkspaceHeader";
 import { JobManagementSection } from "../components/JobManagementSection";
 import { mockCompanyProfile } from "../data/mockEmployerData";
-import { listEmployerJobs, EmployerJobsApiError } from "../job-management/jobManagementApi";
+import { closeEmployerJob, listEmployerJobs, EmployerJobsApiError } from "../job-management/jobManagementApi";
 import type { CompanyProfile } from "../types";
 import type { EmployerJobsPage, EmployerJobsQuery } from "../job-management/types";
 
@@ -55,6 +55,25 @@ function EmployerCompanyJobsPage() {
     setQuery((current) => ({ ...current, ...change }));
   }, []);
 
+  const closeJob = useCallback(async (jobId: string) => {
+    const updatedJob = await closeEmployerJob(jobId);
+    setJobsPage((current) => current ? {
+      ...current,
+      data: current.data.map((job) => job.id === jobId ? updatedJob : job),
+    } : current);
+    setLoadingJobs(true);
+    setJobsError("");
+    try {
+      const refreshed = await listEmployerJobs(query);
+      setJobsPage(refreshed);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, [query]);
+
   return (
     <WorkspaceLayout
       className="space-y-10 sm:space-y-12"
@@ -64,7 +83,7 @@ function EmployerCompanyJobsPage() {
         <CompanyProfileSection initialProfile={company} onSave={setCompany} />
         <div className="border-t border-slate-200 pt-8 sm:pt-10">
           <div className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-500"><BriefcaseBusiness size={16} />Job postings</div>
-          <JobManagementSection error={jobsError} loading={loadingJobs} onQueryChange={updateQuery} onRetry={retryJobs} page={jobsPage} query={query} />
+          <JobManagementSection error={jobsError} loading={loadingJobs} onCloseJob={closeJob} onQueryChange={updateQuery} onRetry={retryJobs} page={jobsPage} query={query} />
         </div>
       </div>
     </WorkspaceLayout>
