@@ -10,13 +10,6 @@ import type { CompanyProfile, JobPosting, JobStatus } from "../types";
 function EmployerCompanyJobsPage() {
   const [company, setCompany] = useState<CompanyProfile | null>(mockCompanyProfile);
   const [jobs, setJobs] = useState<JobPosting[]>(mockJobPostings);
-
-  function saveJob(values: Omit<JobPosting, "id" | "status">, status: JobStatus, id?: string) {
-    setJobs((current) => id
-      ? current.map((job) => job.id === id ? { ...values, id, status } : job)
-      : [{ ...values, id: `job-${Date.now()}`, status }, ...current]);
-  }
-
   function changeJobStatus(job: JobPosting, status: JobStatus) {
     setJobs((current) => current.map((item) => item.id === job.id ? { ...item, status } : item));
   }
@@ -30,7 +23,7 @@ function EmployerCompanyJobsPage() {
         <CompanyProfileSection initialProfile={company} onSave={setCompany} />
         <div className="border-t border-slate-200 pt-8 sm:pt-10">
           <div className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-500"><BriefcaseBusiness size={16} />Job postings</div>
-          <JobManagementSection jobs={jobs} onSave={saveJob} onStatusChange={changeJobStatus} />
+          <JobManagementSection jobs={jobs} onStatusChange={changeJobStatus} />
         </div>
       </div>
     </WorkspaceLayout>

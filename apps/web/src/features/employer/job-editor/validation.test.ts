@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isValidUuid,
   normalizeRequiredSkills,
+  prepareJobDraftSubmission,
   validateJobDraft,
 } from "./validation";
 import type { CreateJobDraftInput } from "./types";
@@ -54,6 +55,18 @@ describe("validateJobDraft", () => {
       }).skills,
     ).toBeTruthy();
   });
+
+  it("validates an optional category ID when one is selected", () => {
+    expect(
+      validateJobDraft({ ...validDraft, categoryId: "not-a-uuid" }).categoryId,
+    ).toBeTruthy();
+    expect(
+      validateJobDraft({
+        ...validDraft,
+        categoryId: "c0000000-0000-4000-8000-000000000001",
+      }).categoryId,
+    ).toBeUndefined();
+  });
 });
 
 describe("normalizeRequiredSkills", () => {
@@ -90,5 +103,37 @@ describe("normalizeRequiredSkills", () => {
 
   it("returns an empty list when there are no selected skills", () => {
     expect(normalizeRequiredSkills([])).toEqual([]);
+  });
+});
+
+describe("prepareJobDraftSubmission", () => {
+  it("returns trimmed contract fields and omits blank optional fields", () => {
+    expect(
+      prepareJobDraftSubmission({
+        title: "  Frontend Engineer  ",
+        description: "  Build product experiences.  ",
+        location: "   ",
+        categoryId: "",
+      }),
+    ).toEqual({
+      valid: true,
+      payload: {
+        title: "Frontend Engineer",
+        description: "Build product experiences.",
+      },
+    });
+  });
+
+  it("returns field errors without a payload when required values are invalid", () => {
+    expect(
+      prepareJobDraftSubmission({ title: "ab", description: "short" }),
+    ).toEqual({
+      valid: false,
+      errors: {
+        title: "Job title must be between 3 and 255 characters.",
+        description:
+          "Job description must be between 10 and 10,000 characters.",
+      },
+    });
   });
 });

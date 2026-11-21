@@ -1,6 +1,7 @@
 import type {
   CreateJobDraftInput,
   JobDraftFieldErrors,
+  JobDraftSubmission,
   JobSkillInput,
 } from "./types";
 
@@ -26,11 +27,39 @@ function validateJobDraft(input: CreateJobDraftInput): JobDraftFieldErrors {
       "Job description must be between 10 and 10,000 characters.";
   }
 
+  if (input.categoryId?.trim() && !isValidUuid(input.categoryId.trim())) {
+    errors.categoryId = "Choose a valid career category.";
+  }
+
   if (input.skills?.some(({ skillId }) => !isValidUuid(skillId.trim()))) {
     errors.skills = "Each selected skill must have a valid skill ID.";
   }
 
   return errors;
+}
+
+function prepareJobDraftSubmission(
+  input: CreateJobDraftInput,
+): JobDraftSubmission {
+  const errors = validateJobDraft(input);
+  if (Object.keys(errors).length > 0) return { valid: false, errors };
+
+  const location = input.location?.trim();
+  const categoryId = input.categoryId?.trim();
+
+  return {
+    valid: true,
+    payload: {
+      title: input.title.trim(),
+      description: input.description.trim(),
+      ...(location ? { location } : {}),
+      ...(input.workMode ? { workMode: input.workMode } : {}),
+      ...(categoryId ? { categoryId } : {}),
+      ...(input.skills
+        ? { skills: normalizeRequiredSkills(input.skills) }
+        : {}),
+    },
+  };
 }
 
 function normalizeRequiredSkills(
@@ -55,4 +84,9 @@ function normalizeRequiredSkills(
   return normalized;
 }
 
-export { isValidUuid, normalizeRequiredSkills, validateJobDraft };
+export {
+  isValidUuid,
+  normalizeRequiredSkills,
+  prepareJobDraftSubmission,
+  validateJobDraft,
+};

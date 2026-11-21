@@ -5,6 +5,7 @@ import { Card } from "../../../components/ui/Card";
 import { PageHeader } from "../../../components/ui/PageHeader";
 import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
 import type { JobPosting, JobStatus } from "../types";
+import type { CreateJobDraftInput } from "../job-editor/types";
 import { FeedbackMessage } from "./FeedbackMessage";
 import { JobDetailsDialog } from "./JobDetailsDialog";
 import { JobEditorForm } from "./JobEditorForm";
@@ -13,7 +14,7 @@ type JobManagementSectionProps = {
   jobs: JobPosting[];
   loading?: boolean;
   error?: string;
-  onSave: (job: Omit<JobPosting, "id" | "status">, status: JobStatus, id?: string) => void;
+  onSubmitDraft?: (draft: CreateJobDraftInput) => void;
   onStatusChange: (job: JobPosting, status: JobStatus) => void;
 };
 
@@ -40,26 +41,19 @@ function JobManagementSection({
   error,
   jobs,
   loading = false,
-  onSave,
+  onSubmitDraft,
   onStatusChange,
 }: JobManagementSectionProps) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("All statuses");
   const [editing, setEditing] = useState<JobPosting | "new" | null>(null);
   const [selected, setSelected] = useState<JobPosting | null>(null);
-  const [notice, setNotice] = useState("");
 
   const filteredJobs = useMemo(() => jobs.filter((job) => {
     const matchesTitle = job.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     const status = statusLabel(job);
     return matchesTitle && (statusFilter === "All statuses" || statusFilter === status);
   }), [jobs, query, statusFilter]);
-
-  function saveJob(values: Omit<JobPosting, "id" | "status">, status: JobStatus) {
-    onSave(values, status, editing !== "new" && editing ? editing.id : undefined);
-    setEditing(null);
-    setNotice(status === "Draft" ? "Draft saved in this preview." : "Job posting saved in this preview.");
-  }
 
   function editFromDetails(job: JobPosting) {
     setSelected(null);
@@ -69,17 +63,20 @@ function JobManagementSection({
   return (
     <section aria-labelledby="job-management-heading" className="space-y-5">
       <PageHeader
-        actions={!editing ? <Button onClick={() => { setEditing("new"); setNotice(""); }} icon={<Plus size={17} />}>Create job</Button> : undefined}
+        actions={!editing ? <Button onClick={() => setEditing("new")} icon={<Plus size={17} />}>Create job</Button> : undefined}
         description="Create openings, keep listings current, and review their publication status."
         eyebrow="Hiring"
         title="Job management"
       />
       <h2 className="sr-only" id="job-management-heading">Job management</h2>
-      {notice ? <FeedbackMessage tone="success">{notice}</FeedbackMessage> : null}
       {error ? <FeedbackMessage tone="error">{error}</FeedbackMessage> : null}
       {loading ? <FeedbackMessage tone="loading">Loading job postings...</FeedbackMessage> : null}
       {!loading && !error && editing ? (
-        <JobEditorForm job={editing === "new" ? undefined : editing} onCancel={() => setEditing(null)} onSave={saveJob} />
+        <JobEditorForm
+          job={editing === "new" ? undefined : editing}
+          onCancel={() => setEditing(null)}
+          onSubmitDraft={onSubmitDraft}
+        />
       ) : null}
       {!loading && !error && !editing ? (
         <>

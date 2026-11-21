@@ -34,6 +34,15 @@ export type SkillCatalogItem = {
   normalizedName: string;
 };
 
+export type CareerCategoryOption = {
+  id: string;
+  name: string;
+};
+
 export type JobDraftFieldErrors = Partial<
-  Record<"title" | "description" | "skills", string>
+  Record<"title" | "description" | "categoryId" | "skills", string>
 >;
+
+export type JobDraftSubmission =
+  | { valid: true; payload: CreateJobDraftInput }
+  | { valid: false; errors: JobDraftFieldErrors };
