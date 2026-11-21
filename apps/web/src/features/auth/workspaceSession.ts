@@ -4,9 +4,17 @@ type WorkspaceSessionResult =
   | { status: "forbidden" }
   | { status: "unavailable" };
 
+type WorkspaceAccessTokenResult =
+  | { status: "authenticated"; accessToken: string }
+  | { status: "unauthenticated" }
+  | { status: "unavailable" };
+
 type JsonObject = Record<string, unknown>;
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(
+  /\/+$/,
+  "",
+);
 let pendingSession: Promise<WorkspaceSessionResult> | null = null;
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -21,7 +29,7 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
+async function resolveWorkspaceAccessToken(): Promise<WorkspaceAccessTokenResult> {
   try {
     const refreshResponse = await fetch(`${apiBaseUrl}/auth/refresh`, {
       cache: "no-store",
@@ -33,13 +41,28 @@ async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
     if (!refreshResponse.ok) return { status: "unavailable" };
 
     const refreshPayload = await readJson(refreshResponse);
-    if (!isJsonObject(refreshPayload) || typeof refreshPayload.accessToken !== "string" || refreshPayload.tokenType !== "Bearer") {
+    if (
+      !isJsonObject(refreshPayload) ||
+      typeof refreshPayload.accessToken !== "string" ||
+      refreshPayload.tokenType !== "Bearer"
+    ) {
       return { status: "unavailable" };
     }
 
+    return { status: "authenticated", accessToken: refreshPayload.accessToken };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
+  const tokenResult = await resolveWorkspaceAccessToken();
+  if (tokenResult.status !== "authenticated") return tokenResult;
+
+  try {
     const userResponse = await fetch(`${apiBaseUrl}/auth/me`, {
       cache: "no-store",
-      headers: { Authorization: `Bearer ${refreshPayload.accessToken}` },
+      headers: { Authorization: `Bearer ${tokenResult.accessToken}` },
     });
 
     if (userResponse.status === 401) return { status: "unauthenticated" };
@@ -47,7 +70,11 @@ async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
     if (!userResponse.ok) return { status: "unavailable" };
 
     const userPayload = await readJson(userResponse);
-    if (!isJsonObject(userPayload) || typeof userPayload.role !== "string" || !userPayload.role.trim()) {
+    if (
+      !isJsonObject(userPayload) ||
+      typeof userPayload.role !== "string" ||
+      !userPayload.role.trim()
+    ) {
       return { status: "unavailable" };
     }
 
@@ -69,5 +96,9 @@ function getWorkspaceSession() {
   return request;
 }
 
-export { getWorkspaceSession, resolveWorkspaceSession };
-export type { WorkspaceSessionResult };
+export {
+  getWorkspaceSession,
+  resolveWorkspaceAccessToken,
+  resolveWorkspaceSession,
+};
+export type { WorkspaceAccessTokenResult, WorkspaceSessionResult };

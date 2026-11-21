@@ -1,4 +1,11 @@
-import { Building2, ClipboardCheck, Flag, LayoutDashboard, Users } from "lucide-react";
+import {
+  Building2,
+  ClipboardCheck,
+  Flag,
+  LayoutDashboard,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import type { AdminSection } from "../types";
 
@@ -6,6 +13,7 @@ const navigation: { label: AdminSection; icon: typeof LayoutDashboard }[] = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "Users", icon: Users },
   { label: "Employers", icon: Building2 },
+  { label: "Company verification", icon: ShieldCheck },
   { label: "Job moderation", icon: ClipboardCheck },
   { label: "Reports", icon: Flag },
 ];
