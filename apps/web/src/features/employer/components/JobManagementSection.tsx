@@ -1,152 +1,592 @@
-import { useMemo, useState } from "react";
-import { BriefcaseBusiness, CalendarDays, MapPin, Plus, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { BriefcaseBusiness, CalendarDays, MapPin, Search } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
+import { Modal } from "../../../components/ui/Modal";
 import { PageHeader } from "../../../components/ui/PageHeader";
-import { StatusBadge, type StatusTone } from "../../../components/ui/StatusBadge";
-import type { JobPosting, JobStatus } from "../types";
+import {
+  StatusBadge,
+  type StatusTone,
+} from "../../../components/ui/StatusBadge";
 import { FeedbackMessage } from "./FeedbackMessage";
-import { JobDetailsDialog } from "./JobDetailsDialog";
-import { JobEditorForm } from "./JobEditorForm";
+import {
+  canConfirmEmployerJobClose,
+  getEmployerJobActions,
+  getEmployerJobStatusLabel,
+  getEmployerJobsPageTarget,
+} from "../job-management/jobListUtils";
+import {
+  EMPLOYER_JOB_STATUSES,
+  type EmployerJobListItem,
+  type EmployerJobsPage,
+  type EmployerJobsQuery,
+  type EmployerJobMutationAction,
+} from "../job-management/types";
 
 type JobManagementSectionProps = {
-  jobs: JobPosting[];
+  page: EmployerJobsPage | null;
   loading?: boolean;
   error?: string;
-  onSave: (job: Omit<JobPosting, "id" | "status">, status: JobStatus, id?: string) => void;
-  onStatusChange: (job: JobPosting, status: JobStatus) => void;
+  onRetry: () => void;
+  onCloseJob: (jobId: string) => Promise<boolean>;
+  onJobAction: (
+    jobId: string,
+    action: EmployerJobMutationAction,
+  ) => Promise<boolean>;
+  query: EmployerJobsQuery;
+  onQueryChange: (query: Partial<EmployerJobsQuery>) => void;
 };
 
-type FilterStatus = "All statuses" | JobStatus | "Expired";
-
-function isExpired(job: JobPosting) {
-  return job.status === "Published" && Boolean(job.deadline) && job.deadline < new Date().toISOString().slice(0, 10);
-}
-
-function statusLabel(job: JobPosting) {
-  return isExpired(job) ? "Expired" : job.status;
-}
-
-function statusTone(job: JobPosting): StatusTone {
-  switch (statusLabel(job)) {
-    case "Published": return "success";
-    case "Expired": return "warning";
-    case "Draft": return "info";
-    case "Closed": return "neutral";
+function statusTone(status: EmployerJobListItem["status"]): StatusTone {
+  switch (status) {
+    case "PUBLISHED":
+      return "success";
+    case "PENDING_APPROVAL":
+      return "warning";
+    case "DRAFT":
+      return "info";
+    case "REJECTED":
+      return "danger";
+    case "CLOSED":
+      return "neutral";
   }
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "Not published";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Date unavailable"
+    : new Intl.DateTimeFormat("en", {
+        dateStyle: "medium",
+        timeZone: "UTC",
+      }).format(date);
 }
 
 function JobManagementSection({
   error,
-  jobs,
   loading = false,
-  onSave,
-  onStatusChange,
+  onCloseJob,
+  onJobAction,
+  onQueryChange,
+  onRetry,
+  page,
+  query,
 }: JobManagementSectionProps) {
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>("All statuses");
-  const [editing, setEditing] = useState<JobPosting | "new" | null>(null);
-  const [selected, setSelected] = useState<JobPosting | null>(null);
+  const [selected, setSelected] = useState<EmployerJobListItem | null>(null);
+  const [closeTarget, setCloseTarget] = useState<EmployerJobListItem | null>(
+    null,
+  );
+  const [actionTarget, setActionTarget] = useState<{
+    job: EmployerJobListItem;
+    action: Exclude<EmployerJobMutationAction, "close">;
+  } | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState("");
   const [notice, setNotice] = useState("");
+  const closeInProgress = useRef(false);
+  const actionInProgress = useRef(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const mounted = useRef(true);
+  const [searchInput, setSearchInput] = useState(query.search ?? "");
+  const jobs = page?.data ?? [];
+  const meta = page?.meta;
 
-  const filteredJobs = useMemo(() => jobs.filter((job) => {
-    const matchesTitle = job.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
-    const status = statusLabel(job);
-    return matchesTitle && (statusFilter === "All statuses" || statusFilter === status);
-  }), [jobs, query, statusFilter]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  function saveJob(values: Omit<JobPosting, "id" | "status">, status: JobStatus) {
-    onSave(values, status, editing !== "new" && editing ? editing.id : undefined);
-    setEditing(null);
-    setNotice(status === "Draft" ? "Draft saved in this preview." : "Job posting saved in this preview.");
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      if (searchInput.trim() !== (query.search ?? ""))
+        onQueryChange({ search: searchInput.trim() || undefined, page: 1 });
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [onQueryChange, query.search, searchInput]);
+
+  const previousPage = meta
+    ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "previous")
+    : null;
+  const nextPage = meta
+    ? getEmployerJobsPageTarget(meta.page, meta.totalPages, "next")
+    : null;
+
+  async function confirmClose() {
+    if (
+      !closeTarget ||
+      !canConfirmEmployerJobClose(
+        closeTarget.status,
+        closeInProgress.current,
+      ) ||
+      !getEmployerJobActions(closeTarget.status).includes("close")
+    )
+      return;
+    closeInProgress.current = true;
+    setClosing(true);
+    setCloseError("");
+    setNotice("");
+    try {
+      const refreshed = await onCloseJob(closeTarget.id);
+      if (!mounted.current) return;
+      setNotice(
+        refreshed
+          ? `${closeTarget.title} was closed successfully.`
+          : `${closeTarget.title} was closed successfully. The list could not be refreshed; the displayed status was updated from the server response.`,
+      );
+      setCloseTarget(null);
+    } catch (error) {
+      if (mounted.current)
+        setCloseError(
+          error instanceof Error
+            ? error.message
+            : "Could not close this job. Try again.",
+        );
+    } finally {
+      closeInProgress.current = false;
+      if (mounted.current) setClosing(false);
+    }
   }
 
-  function editFromDetails(job: JobPosting) {
-    setSelected(null);
-    setEditing(job);
+  async function confirmAction() {
+    if (
+      !actionTarget ||
+      actionInProgress.current ||
+      !getEmployerJobActions(actionTarget.job.status).includes(
+        actionTarget.action,
+      )
+    )
+      return;
+    actionInProgress.current = true;
+    setActionBusy(true);
+    setActionError("");
+    setNotice("");
+    try {
+      const refreshed = await onJobAction(
+        actionTarget.job.id,
+        actionTarget.action,
+      );
+      if (!mounted.current) return;
+      const actionLabel =
+        actionTarget.action === "submit"
+          ? "submitted for review"
+          : actionTarget.action === "withdraw"
+            ? "returned to draft"
+            : "deleted";
+      setNotice(
+        refreshed
+          ? `${actionTarget.job.title} was ${actionLabel}.`
+          : `${actionTarget.job.title} was ${actionLabel}. The list could not be refreshed.`,
+      );
+      setActionTarget(null);
+    } catch (error) {
+      if (mounted.current)
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not update this job. Try again.",
+        );
+    } finally {
+      actionInProgress.current = false;
+      if (mounted.current) setActionBusy(false);
+    }
   }
 
   return (
     <section aria-labelledby="job-management-heading" className="space-y-5">
       <PageHeader
-        actions={!editing ? <Button onClick={() => { setEditing("new"); setNotice(""); }} icon={<Plus size={17} />}>Create job</Button> : undefined}
-        description="Create openings, keep listings current, and review their publication status."
+        description="Review your job postings and their current approval status."
         eyebrow="Hiring"
         title="Job management"
       />
-      <h2 className="sr-only" id="job-management-heading">Job management</h2>
-      {notice ? <FeedbackMessage tone="success">{notice}</FeedbackMessage> : null}
-      {error ? <FeedbackMessage tone="error">{error}</FeedbackMessage> : null}
-      {loading ? <FeedbackMessage tone="loading">Loading job postings...</FeedbackMessage> : null}
-      {!loading && !error && editing ? (
-        <JobEditorForm job={editing === "new" ? undefined : editing} onCancel={() => setEditing(null)} onSave={saveJob} />
+      <h2 className="sr-only" id="job-management-heading">
+        Job management
+      </h2>
+      {notice ? (
+        <FeedbackMessage tone="success">{notice}</FeedbackMessage>
       ) : null}
-      {!loading && !error && !editing ? (
-        <>
-          <Card as="div" padding="sm" className="flex flex-col gap-3 sm:flex-row">
-            <label className="relative block min-w-0 flex-1">
-              <span className="sr-only">Search by job title</span>
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-              <input className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setQuery(event.target.value)} placeholder="Search job titles" type="search" value={query} />
-            </label>
-            <label className="block sm:w-48">
-              <span className="sr-only">Filter jobs by status</span>
-              <select className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10" onChange={(event) => setStatusFilter(event.target.value as FilterStatus)} value={statusFilter}>
-                {(["All statuses", "Published", "Draft", "Closed", "Expired"] satisfies FilterStatus[]).map((status) => <option key={status}>{status}</option>)}
-              </select>
-            </label>
-          </Card>
-          {filteredJobs.length ? (
-            <div className="grid gap-3">
-              {filteredJobs.map((job) => <JobRow job={job} key={job.id} onDetails={() => setSelected(job)} onStatusChange={onStatusChange} />)}
-            </div>
-          ) : (
-            <Card className="py-12 text-center">
-              <BriefcaseBusiness className="mx-auto size-10 text-slate-400" aria-hidden="true" />
-              <h3 className="mt-4 text-lg font-semibold text-slate-950">{jobs.length ? "No matching jobs" : "No job postings yet"}</h3>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">{jobs.length ? "Try another title or status filter." : "Create your first job posting to start meeting qualified candidates."}</p>
-              {!jobs.length ? <Button className="mt-5" onClick={() => setEditing("new")} icon={<Plus size={16} />}>Create your first job</Button> : null}
+      <Card as="div" padding="sm" className="flex flex-col gap-3 sm:flex-row">
+        <label className="relative block min-w-0 flex-1">
+          <span className="sr-only">Search job titles</span>
+          <Search
+            className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+            aria-hidden="true"
+          />
+          <input
+            className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Search job titles"
+            type="search"
+            value={searchInput}
+          />
+        </label>
+        <label className="block sm:w-56">
+          <span className="sr-only">Filter jobs by status</span>
+          <select
+            aria-label="Filter jobs by status"
+            className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+            onChange={(event) =>
+              onQueryChange({
+                status: event.target.value
+                  ? (event.target.value as EmployerJobsQuery["status"])
+                  : undefined,
+                page: 1,
+              })
+            }
+            value={query.status ?? ""}
+          >
+            <option value="">All statuses</option>
+            {EMPLOYER_JOB_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {getEmployerJobStatusLabel(status)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </Card>
+      {loading ? (
+        <FeedbackMessage tone="loading">
+          Loading job postings...
+        </FeedbackMessage>
+      ) : null}
+      {error ? (
+        <div className="space-y-3" role="alert">
+          <FeedbackMessage tone="error">{error}</FeedbackMessage>
+          <Button onClick={onRetry} variant="secondary">
+            Retry loading jobs
+          </Button>
+        </div>
+      ) : null}
+      {!loading && !error && jobs.length > 0 ? (
+        <div className="grid gap-3" aria-label="Employer job postings">
+          {jobs.map((job) => (
+            <Card
+              as="article"
+              padding="md"
+              className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+              key={job.id}
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="break-words font-semibold text-slate-950">
+                    {job.title}
+                  </h3>
+                  <StatusBadge tone={statusTone(job.status)}>
+                    {getEmployerJobStatusLabel(job.status)}
+                  </StatusBadge>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin size={14} aria-hidden="true" />
+                    {job.location || "Location not specified"}
+                  </span>
+                  {job.workMode ? <span>{job.workMode}</span> : null}
+                  {job.category ? <span>{job.category.name}</span> : null}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <CalendarDays size={14} aria-hidden="true" />
+                    Updated {formatDate(job.updatedAt)}
+                  </span>
+                  <span>{job._count.applications} applications</span>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button
+                  aria-label={`View details for ${job.title}`}
+                  onClick={() => setSelected(job)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  View details
+                </Button>
+                {getEmployerJobActions(job.status).includes("close") ? (
+                  <Button
+                    aria-label={`Close ${job.title}`}
+                    onClick={() => {
+                      setCloseTarget(job);
+                      setCloseError("");
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Close job
+                  </Button>
+                ) : null}
+                {getEmployerJobActions(job.status).includes("submit") ? (
+                  <Button
+                    aria-label={`Submit ${job.title} for approval`}
+                    onClick={() => {
+                      setActionTarget({ job, action: "submit" });
+                      setActionError("");
+                    }}
+                    size="sm"
+                  >
+                    Submit for approval
+                  </Button>
+                ) : null}
+                {getEmployerJobActions(job.status).includes("withdraw") ? (
+                  <Button
+                    aria-label={`Withdraw ${job.title} to draft`}
+                    onClick={() => {
+                      setActionTarget({ job, action: "withdraw" });
+                      setActionError("");
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Withdraw to draft
+                  </Button>
+                ) : null}
+                {getEmployerJobActions(job.status).includes("delete") ? (
+                  <Button
+                    aria-label={`Delete draft ${job.title}`}
+                    onClick={() => {
+                      setActionTarget({ job, action: "delete" });
+                      setActionError("");
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Delete draft
+                  </Button>
+                ) : null}
+              </div>
             </Card>
-          )}
-        </>
+          ))}
+        </div>
       ) : null}
-      {selected ? <JobDetailsDialog expired={isExpired(selected)} job={selected} onClose={() => setSelected(null)} onEdit={editFromDetails} /> : null}
+      {!loading && !error && page && jobs.length === 0 ? (
+        <Card className="py-12 text-center">
+          <BriefcaseBusiness
+            className="mx-auto size-10 text-slate-400"
+            aria-hidden="true"
+          />
+          <h3 className="mt-4 text-lg font-semibold text-slate-950">
+            {query.search || query.status
+              ? "No matching jobs"
+              : "No job postings yet"}
+          </h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+            {query.search || query.status
+              ? "Try another search or status filter."
+              : "Your job postings will appear here after they have been created."}
+          </p>
+        </Card>
+      ) : null}
+      {!loading && !error && meta ? (
+        <div className="flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <span aria-live="polite">
+            {meta.total} job{meta.total === 1 ? "" : "s"} · Page {meta.page} of{" "}
+            {Math.max(meta.totalPages, 1)}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              disabled={previousPage === null}
+              onClick={() =>
+                previousPage && onQueryChange({ page: previousPage })
+              }
+              size="sm"
+              variant="secondary"
+            >
+              Previous
+            </Button>
+            <Button
+              disabled={nextPage === null}
+              onClick={() => nextPage && onQueryChange({ page: nextPage })}
+              size="sm"
+              variant="secondary"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {selected ? (
+        <JobDetailDialog job={selected} onClose={() => setSelected(null)} />
+      ) : null}
+      {closeTarget ? (
+        <Modal
+          aria-labelledby="close-job-title"
+          aria-modal="true"
+          className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-7"
+          onClose={() => {
+            if (!closing) setCloseTarget(null);
+          }}
+          role="dialog"
+        >
+          <h2
+            className="text-xl font-semibold text-slate-950"
+            id="close-job-title"
+          >
+            Close this job posting?
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            <span className="font-semibold text-slate-900">
+              {closeTarget.title}
+            </span>{" "}
+            will be closed. Applicants will no longer be able to apply. This
+            action is confirmed by the job service.
+          </p>
+          {closeError ? (
+            <div className="mt-4 space-y-3" role="alert">
+              <FeedbackMessage tone="error">{closeError}</FeedbackMessage>
+              <Button
+                disabled={closing}
+                onClick={() => {
+                  setCloseTarget(null);
+                  onRetry();
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                Reload jobs
+              </Button>
+            </div>
+          ) : null}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              disabled={closing}
+              onClick={() => setCloseTarget(null)}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button disabled={closing} onClick={() => void confirmClose()}>
+              {closing ? "Closing…" : "Confirm close"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
+      {actionTarget ? (
+        <Modal
+          aria-labelledby="job-action-title"
+          aria-modal="true"
+          className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-7"
+          onClose={() => {
+            if (!actionBusy) setActionTarget(null);
+          }}
+          role="dialog"
+        >
+          <h2
+            className="text-xl font-semibold text-slate-950"
+            id="job-action-title"
+          >
+            {actionTarget.action === "submit"
+              ? "Submit this job for approval?"
+              : actionTarget.action === "withdraw"
+                ? "Withdraw this job to draft?"
+                : "Delete this draft?"}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            <span className="font-semibold text-slate-900">
+              {actionTarget.job.title}
+            </span>{" "}
+            {actionTarget.action === "submit"
+              ? "will be sent to Admin for review. Your company must be verified."
+              : actionTarget.action === "withdraw"
+                ? "will return to Draft so it can be edited."
+                : "will be permanently removed. Only Draft jobs can be deleted."}
+          </p>
+          {actionError ? (
+            <div className="mt-4" role="alert">
+              <FeedbackMessage tone="error">{actionError}</FeedbackMessage>
+            </div>
+          ) : null}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              disabled={actionBusy}
+              onClick={() => setActionTarget(null)}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button disabled={actionBusy} onClick={() => void confirmAction()}>
+              {actionBusy ? "Processing…" : "Confirm"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
     </section>
   );
 }
 
-function JobRow({ job, onDetails, onStatusChange }: { job: JobPosting; onDetails: () => void; onStatusChange: (job: JobPosting, status: JobStatus) => void }) {
-  const closed = job.status === "Closed";
-  const canChangeStatus = job.status !== "Draft";
-
+function JobDetailDialog({
+  job,
+  onClose,
+}: {
+  job: EmployerJobListItem;
+  onClose: () => void;
+}) {
   return (
-    <Card as="article" padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-semibold text-slate-950">{job.title}</h3>
-          <StatusBadge tone={statusTone(job)}>{statusLabel(job)}</StatusBadge>
+    <Modal
+      aria-labelledby="employer-job-detail-title"
+      aria-modal="true"
+      className="max-h-[92vh] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-8"
+      onClose={onClose}
+      role="dialog"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <StatusBadge tone={statusTone(job.status)}>
+            {getEmployerJobStatusLabel(job.status)}
+          </StatusBadge>
+          <h2
+            className="mt-3 break-words text-2xl font-semibold text-slate-950"
+            id="employer-job-detail-title"
+          >
+            {job.title}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {job.location || "Location not specified"}
+            {job.workMode ? ` · ${job.workMode}` : ""}
+          </p>
         </div>
-        <p className="mt-1 text-sm text-slate-600">{job.department} · {job.employmentType} · {job.salary || "Salary not specified"}</p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-          <span className="inline-flex items-center gap-1.5"><MapPin size={14} />{job.location || "Location not specified"}</span>
-          <span className="inline-flex items-center gap-1.5"><CalendarDays size={14} />Deadline {formatDate(job.deadline)}</span>
+        <Button
+          aria-label="Close job details"
+          onClick={onClose}
+          size="sm"
+          variant="ghost"
+        >
+          Close
+        </Button>
+      </div>
+      <p className="mt-5 whitespace-pre-line text-sm leading-6 text-slate-700">
+        {job.description}
+      </p>
+      {job.category ? (
+        <p className="mt-4 text-sm text-slate-600">
+          Career category: {job.category.name}
+        </p>
+      ) : null}
+      {job.skills.length ? (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold">Required skills</h3>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {job.skills.map((entry) => (
+              <li
+                className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+                key={entry.skillId}
+              >
+                {entry.skill.name}
+              </li>
+            ))}
+          </ul>
         </div>
+      ) : null}
+      <p className="mt-4 text-sm text-slate-600">
+        Applications: {job._count.applications}
+      </p>
+      <div className="mt-6 flex justify-end border-t border-slate-100 pt-4">
+        <Button onClick={onClose} variant="secondary">
+          Close details
+        </Button>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Button onClick={onDetails} size="sm" variant="secondary">View details</Button>
-        {canChangeStatus ? (
-          <Button onClick={() => onStatusChange(job, closed ? "Published" : "Closed")} size="sm" variant={closed ? "primary" : "ghost"}>
-            {closed ? "Reopen" : "Close job"}
-          </Button>
-        ) : null}
-      </div>
-    </Card>
+    </Modal>
   );
-}
-
-function formatDate(value: string) {
-  if (!value) return "Not set";
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
 }
 
 export { JobManagementSection };

@@ -6,7 +6,19 @@ type WorkspaceSessionResult =
 
 type JsonObject = Record<string, unknown>;
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
+export class WorkspaceSessionError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(
+  /\/+$/,
+  "",
+);
 let pendingSession: Promise<WorkspaceSessionResult> | null = null;
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -21,25 +33,37 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+async function refreshWorkspaceAccessToken(): Promise<string> {
+  const refreshResponse = await fetch(`${apiBaseUrl}/auth/refresh`, {
+    cache: "no-store",
+    credentials: "include",
+    method: "POST",
+  });
+  if (!refreshResponse.ok)
+    throw new WorkspaceSessionError(
+      `Session refresh failed (${refreshResponse.status}).`,
+      refreshResponse.status,
+    );
+  const payload = await readJson(refreshResponse);
+  if (
+    !isJsonObject(payload) ||
+    typeof payload.accessToken !== "string" ||
+    payload.tokenType !== "Bearer"
+  ) {
+    throw new WorkspaceSessionError(
+      "Session refresh returned an invalid access token.",
+    );
+  }
+  return payload.accessToken;
+}
+
 async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
   try {
-    const refreshResponse = await fetch(`${apiBaseUrl}/auth/refresh`, {
-      cache: "no-store",
-      credentials: "include",
-      method: "POST",
-    });
-
-    if (refreshResponse.status === 401) return { status: "unauthenticated" };
-    if (!refreshResponse.ok) return { status: "unavailable" };
-
-    const refreshPayload = await readJson(refreshResponse);
-    if (!isJsonObject(refreshPayload) || typeof refreshPayload.accessToken !== "string" || refreshPayload.tokenType !== "Bearer") {
-      return { status: "unavailable" };
-    }
+    const accessToken = await refreshWorkspaceAccessToken();
 
     const userResponse = await fetch(`${apiBaseUrl}/auth/me`, {
       cache: "no-store",
-      headers: { Authorization: `Bearer ${refreshPayload.accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     if (userResponse.status === 401) return { status: "unauthenticated" };
@@ -47,12 +71,18 @@ async function resolveWorkspaceSession(): Promise<WorkspaceSessionResult> {
     if (!userResponse.ok) return { status: "unavailable" };
 
     const userPayload = await readJson(userResponse);
-    if (!isJsonObject(userPayload) || typeof userPayload.role !== "string" || !userPayload.role.trim()) {
+    if (
+      !isJsonObject(userPayload) ||
+      typeof userPayload.role !== "string" ||
+      !userPayload.role.trim()
+    ) {
       return { status: "unavailable" };
     }
 
     return { status: "authenticated", role: userPayload.role };
-  } catch {
+  } catch (error) {
+    if (error instanceof WorkspaceSessionError && error.status === 401)
+      return { status: "unauthenticated" };
     return { status: "unavailable" };
   }
 }
@@ -70,4 +100,5 @@ function getWorkspaceSession() {
 }
 
 export { getWorkspaceSession, resolveWorkspaceSession };
+export { refreshWorkspaceAccessToken };
 export type { WorkspaceSessionResult };
