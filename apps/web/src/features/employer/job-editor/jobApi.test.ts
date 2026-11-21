@@ -25,7 +25,10 @@ function stubAuthenticatedResponses(finalResponse: Response) {
     .fn()
     .mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ accessToken: "fresh-access-token", tokenType: "Bearer" }),
+        JSON.stringify({
+          accessToken: "fresh-access-token",
+          tokenType: "Bearer",
+        }),
         { status: 200 },
       ),
     )
@@ -40,7 +43,10 @@ describe("job API client", () => {
   it("loads employer jobs from the paginated endpoint with a refreshed bearer token", async () => {
     const fetchMock = stubAuthenticatedResponses(
       new Response(
-        JSON.stringify({ data: [job], meta: { total: 1, page: 1, pageSize: 100, totalPages: 1 } }),
+        JSON.stringify({
+          data: [job],
+          meta: { total: 1, page: 1, pageSize: 100, totalPages: 1 },
+        }),
         { status: 200 },
       ),
     );
@@ -55,7 +61,9 @@ describe("job API client", () => {
       2,
       expect.stringMatching(/\/jobs\/my\?page=1&pageSize=100$/),
       expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: "Bearer fresh-access-token" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer fresh-access-token",
+        }),
       }),
     );
   });
@@ -67,14 +75,25 @@ describe("job API client", () => {
     const payload = {
       title: job.title,
       description: job.description,
-      skills: [{ skillId: "a0000000-0000-4000-8000-000000000001", required: true, weight: 1 }],
+      skills: [
+        {
+          skillId: "a0000000-0000-4000-8000-000000000001",
+          required: true,
+          weight: 1,
+        },
+      ],
     };
 
-    await expect(createJobDraft(payload)).resolves.toMatchObject({ id: job.id });
+    await expect(createJobDraft(payload)).resolves.toMatchObject({
+      id: job.id,
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       expect.stringMatching(/\/jobs$/),
-      expect.objectContaining({ method: "POST", body: JSON.stringify(payload) }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
     );
   });
 
@@ -83,7 +102,10 @@ describe("job API client", () => {
     const mapped = mapEmployerJob({
       ...job,
       categoryId: "c0000000-0000-4000-8000-000000000001",
-      category: { id: "c0000000-0000-4000-8000-000000000001", name: "Engineering" },
+      category: {
+        id: "c0000000-0000-4000-8000-000000000001",
+        name: "Engineering",
+      },
       skills: [
         {
           skillId,
@@ -110,12 +132,20 @@ describe("job API client", () => {
     await expect(getEmployerJob(job.id)).resolves.toMatchObject({ id: job.id });
 
     const patchMock = stubAuthenticatedResponses(
-      new Response(JSON.stringify({ ...job, title: "Updated title" }), { status: 200 }),
+      new Response(JSON.stringify({ ...job, title: "Updated title" }), {
+        status: 200,
+      }),
     );
     const skills = [
-      { skillId: "a0000000-0000-4000-8000-000000000001", required: false, weight: 2.5 },
+      {
+        skillId: "a0000000-0000-4000-8000-000000000001",
+        required: false,
+        weight: 2.5,
+      },
     ];
-    await expect(updateJobDraft(job.id, { title: "Updated title", skills })).resolves.toMatchObject({
+    await expect(
+      updateJobDraft(job.id, { title: "Updated title", skills }),
+    ).resolves.toMatchObject({
       title: "Updated title",
     });
     expect(patchMock).toHaveBeenNthCalledWith(
@@ -130,7 +160,10 @@ describe("job API client", () => {
 
   it("surfaces authorization failures and rejects missing job IDs", async () => {
     stubAuthenticatedResponses(
-      new Response(JSON.stringify({ code: "FORBIDDEN", message: "Forbidden" }), { status: 403 }),
+      new Response(
+        JSON.stringify({ code: "FORBIDDEN", message: "Forbidden" }),
+        { status: 403 },
+      ),
     );
     await expect(getEmployerJob(job.id)).rejects.toMatchObject({
       name: "JobApiError",
@@ -140,8 +173,112 @@ describe("job API client", () => {
     await expect(updateJobDraft("", {})).rejects.toBeInstanceOf(JobApiError);
   });
 
+  it.each([
+    [400, "Some job details are invalid. Review the form and try again."],
+    [401, "Your session has expired. Sign in again."],
+    [403, "You do not have permission to manage this job."],
+    [404, "This job could not be found or is no longer available."],
+    [503, "The job service is temporarily unavailable. Try again."],
+  ])("maps HTTP %i to a safe, actionable message", async (status, message) => {
+    stubAuthenticatedResponses(
+      new Response(JSON.stringify({ message: ["internal detail"] }), {
+        status,
+      }),
+    );
+
+    await expect(
+      createJobDraft({
+        title: "Frontend",
+        description: "Build useful experiences.",
+      }),
+    ).rejects.toMatchObject({ status, message });
+  });
+
+  it("does not expose raw server messages for unexpected failures", async () => {
+    stubAuthenticatedResponses(
+      new Response(
+        JSON.stringify({ message: "sensitive internal stack detail" }),
+        { status: 409 },
+      ),
+    );
+
+    await expect(
+      createJobDraft({
+        title: "Frontend",
+        description: "Build useful experiences.",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "The job could not be saved. Try again.",
+    });
+  });
+
+  it("explains when the backend says a job status no longer permits editing", async () => {
+    stubAuthenticatedResponses(
+      new Response(
+        JSON.stringify({ code: "CANNOT_EDIT_JOB", message: "internal detail" }),
+        { status: 400 },
+      ),
+    );
+
+    await expect(
+      updateJobDraft(job.id, { title: "Updated title" }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CANNOT_EDIT_JOB",
+      message:
+        "This job's status changed and it can no longer be edited. Reload the job list and try again.",
+    });
+  });
+
+  it("reports a connection failure without leaking request details", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: "fresh-access-token",
+            tokenType: "Bearer",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockRejectedValueOnce(new Error("network internals"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createJobDraft({
+        title: "Frontend",
+        description: "Build useful experiences.",
+      }),
+    ).rejects.toMatchObject({
+      name: "JobApiError",
+      message: "Could not connect to the job service.",
+    });
+  });
+
+  it("rejects malformed mutation responses instead of treating them as saved jobs", async () => {
+    stubAuthenticatedResponses(
+      new Response(JSON.stringify({ id: job.id, title: job.title }), {
+        status: 201,
+      }),
+    );
+
+    await expect(
+      createJobDraft({
+        title: "Frontend",
+        description: "Build useful experiences.",
+      }),
+    ).rejects.toMatchObject({
+      name: "JobApiError",
+      message: "The job service returned invalid job data.",
+    });
+  });
+
   it("reports an expired session when token refresh is unauthorized", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 401 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("", { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(listEmployerJobs()).rejects.toMatchObject({

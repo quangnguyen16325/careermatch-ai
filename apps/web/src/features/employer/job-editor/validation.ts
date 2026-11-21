@@ -4,6 +4,7 @@ import type {
   JobDraftSubmission,
   JobSkillInput,
 } from "./types";
+import { JOB_WORK_MODES } from "./types";
 
 // Matches validator.js isUUID(value) used by the backend's @IsUUID() decorator.
 const UUID_PATTERN =
@@ -25,6 +26,17 @@ function validateJobDraft(input: CreateJobDraftInput): JobDraftFieldErrors {
   if (descriptionLength < 10 || descriptionLength > 10000) {
     errors.description =
       "Job description must be between 10 and 10,000 characters.";
+  }
+
+  if ((input.location?.trim().length ?? 0) > 255) {
+    errors.location = "Location must be 255 characters or fewer.";
+  }
+
+  if (
+    input.workMode !== undefined &&
+    !JOB_WORK_MODES.includes(input.workMode)
+  ) {
+    errors.workMode = "Choose a supported work mode.";
   }
 
   if (input.categoryId?.trim() && !isValidUuid(input.categoryId.trim())) {
@@ -49,8 +61,14 @@ function validateJobDraft(input: CreateJobDraftInput): JobDraftFieldErrors {
     errors.skills = "Skill weights must be between 0.1 and 10.";
   }
 
-  const skillIds = input.skills?.map(({ skillId }) => skillId.trim().toLowerCase());
-  if (!errors.skills && skillIds && new Set(skillIds).size !== skillIds.length) {
+  const skillIds = input.skills?.map(({ skillId }) =>
+    skillId.trim().toLowerCase(),
+  );
+  if (
+    !errors.skills &&
+    skillIds &&
+    new Set(skillIds).size !== skillIds.length
+  ) {
     errors.skills = "A skill can only be selected once.";
   }
 

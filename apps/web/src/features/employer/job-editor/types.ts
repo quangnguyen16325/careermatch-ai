@@ -40,7 +40,10 @@ export type CareerCategoryOption = {
 };
 
 export type JobDraftFieldErrors = Partial<
-  Record<"title" | "description" | "categoryId" | "skills", string>
+  Record<
+    "title" | "description" | "location" | "workMode" | "categoryId" | "skills",
+    string
+  >
 >;
 
 export type JobDraftSubmission =

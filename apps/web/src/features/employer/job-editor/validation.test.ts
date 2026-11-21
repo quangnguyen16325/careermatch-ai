@@ -41,6 +41,21 @@ describe("validateJobDraft", () => {
     expect(validateJobDraft(validDraft)).toEqual({});
   });
 
+  it("validates the optional location limit and supported work modes", () => {
+    expect(
+      validateJobDraft({ ...validDraft, location: "x".repeat(256) }).location,
+    ).toBe("Location must be 255 characters or fewer.");
+    expect(
+      validateJobDraft({ ...validDraft, location: "x".repeat(255) }).location,
+    ).toBeUndefined();
+    expect(
+      validateJobDraft({ ...validDraft, workMode: "REMOTE" }).workMode,
+    ).toBeUndefined();
+    expect(
+      validateJobDraft({ ...validDraft, workMode: "FLEX" as never }).workMode,
+    ).toBe("Choose a supported work mode.");
+  });
+
   it("reports empty or malformed skill IDs", () => {
     expect(
       validateJobDraft({
@@ -70,12 +85,14 @@ describe("validateJobDraft", () => {
     const skillId = "a0000000-0000-4000-8000-000000000001";
     for (const weight of [0.1, 10]) {
       expect(
-        validateJobDraft({ ...validDraft, skills: [{ skillId, weight }] }).skills,
+        validateJobDraft({ ...validDraft, skills: [{ skillId, weight }] })
+          .skills,
       ).toBeUndefined();
     }
     for (const weight of [0, 10.1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(
-        validateJobDraft({ ...validDraft, skills: [{ skillId, weight }] }).skills,
+        validateJobDraft({ ...validDraft, skills: [{ skillId, weight }] })
+          .skills,
       ).toBe("Skill weights must be between 0.1 and 10.");
     }
   });

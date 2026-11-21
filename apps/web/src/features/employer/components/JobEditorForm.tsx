@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Save, X } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
@@ -21,7 +21,9 @@ type JobEditorFormProps = {
   initialSkills?: SelectedJobSkill[];
   categories?: CareerCategoryOption[];
   onCancel: () => void;
-  onSubmitDraft?: (draft: CreateJobDraftInput | UpdateJobInput) => Promise<void>;
+  onSubmitDraft?: (
+    draft: CreateJobDraftInput | UpdateJobInput,
+  ) => Promise<void>;
 };
 
 const WORK_MODE_LABELS: Record<JobWorkMode, string> = {
@@ -60,6 +62,15 @@ function JobEditorForm({
   const [submitError, setSubmitError] = useState("");
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   function updateField<K extends keyof CreateJobDraftInput>(
     name: K,
@@ -73,7 +84,7 @@ function JobEditorForm({
 
   async function submitDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
+    if (submittingRef.current) return;
     const submission = prepareJobDraftSubmission(form);
     setErrors(submission.valid ? {} : submission.errors);
     setSubmitNotice("");
@@ -91,6 +102,7 @@ function JobEditorForm({
       return;
     }
 
+    submittingRef.current = true;
     setSaving(true);
     try {
       const payload: CreateJobDraftInput | UpdateJobInput = job
@@ -102,15 +114,18 @@ function JobEditorForm({
           }
         : submission.payload;
       await onSubmitDraft(payload);
-      setSubmitNotice("Job draft saved successfully.");
+      if (mountedRef.current) setSubmitNotice("Job draft saved successfully.");
     } catch (error) {
-      setSubmitError(
-        error instanceof Error
-          ? error.message
-          : "The job draft could not be saved. Please try again.",
-      );
+      if (mountedRef.current) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : "The job draft could not be saved. Please try again.",
+        );
+      }
     } finally {
-      setSaving(false);
+      submittingRef.current = false;
+      if (mountedRef.current) setSaving(false);
     }
   }
 
@@ -148,6 +163,7 @@ function JobEditorForm({
               aria-describedby={errors.title ? "title-error" : undefined}
               aria-invalid={Boolean(errors.title)}
               className={inputClass(Boolean(errors.title))}
+              disabled={saving}
               maxLength={255}
               onChange={(event) => updateField("title", event.target.value)}
               required
@@ -163,18 +179,25 @@ function JobEditorForm({
             Location{" "}
             <span className="font-normal text-slate-500">(optional)</span>
             <input
-              className={inputClass(false)}
+              aria-describedby={errors.location ? "location-error" : undefined}
+              aria-invalid={Boolean(errors.location)}
+              className={inputClass(Boolean(errors.location))}
+              disabled={saving}
               maxLength={255}
               onChange={(event) => updateField("location", event.target.value)}
               value={form.location ?? ""}
             />
+            {renderError("location")}
           </label>
 
           <label className="block min-w-0 text-sm font-medium text-slate-700">
             Work mode{" "}
             <span className="font-normal text-slate-500">(optional)</span>
             <select
-              className={inputClass(false)}
+              aria-describedby={errors.workMode ? "workMode-error" : undefined}
+              aria-invalid={Boolean(errors.workMode)}
+              className={inputClass(Boolean(errors.workMode))}
+              disabled={saving}
               onChange={(event) =>
                 updateField(
                   "workMode",
@@ -192,6 +215,7 @@ function JobEditorForm({
                 </option>
               ))}
             </select>
+            {renderError("workMode")}
           </label>
 
           <label className="block min-w-0 text-sm font-medium text-slate-700">
@@ -203,6 +227,7 @@ function JobEditorForm({
               }
               aria-invalid={Boolean(errors.categoryId)}
               className={inputClass(Boolean(errors.categoryId))}
+              disabled={saving}
               onChange={(event) =>
                 updateField("categoryId", event.target.value || undefined)
               }
@@ -237,6 +262,7 @@ function JobEditorForm({
               }
               aria-invalid={Boolean(errors.description)}
               className={`${inputClass(Boolean(errors.description))} min-h-36 resize-y py-3`}
+              disabled={saving}
               maxLength={10000}
               onChange={(event) =>
                 updateField("description", event.target.value)
@@ -253,12 +279,18 @@ function JobEditorForm({
             </span>
           </label>
 
-          <fieldset className="min-w-0 rounded-xl border border-slate-200 p-4 sm:col-span-2">
+          <fieldset
+            aria-describedby={errors.skills ? "skills-error" : undefined}
+            aria-invalid={Boolean(errors.skills)}
+            className="min-w-0 rounded-xl border border-slate-200 p-4 sm:col-span-2"
+            tabIndex={errors.skills ? -1 : undefined}
+          >
             <legend className="px-1 text-sm font-semibold text-slate-800">
               Required skills{" "}
               <span className="font-normal text-slate-500">(optional)</span>
             </legend>
             <RequiredSkillSelector
+              disabled={saving}
               onChange={(skills) => {
                 setSelectedSkills(skills);
                 updateField(
@@ -285,7 +317,10 @@ function JobEditorForm({
           </p>
         ) : null}
         {submitError ? (
-          <p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-800" role="alert">
+          <p
+            className="mt-5 rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-800"
+            role="alert"
+          >
             {submitError}
           </p>
         ) : null}

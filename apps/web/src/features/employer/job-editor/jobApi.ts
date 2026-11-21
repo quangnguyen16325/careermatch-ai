@@ -5,7 +5,10 @@ import {
 import type { CreateJobDraftInput, UpdateJobInput } from "./types";
 import type { JobPosting } from "../types";
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(/\/+$/, "");
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(
+  /\/+$/,
+  "",
+);
 
 type JobApiSkill = {
   skillId: string;
@@ -35,7 +38,10 @@ class JobApiError extends Error {
   readonly status?: number;
   readonly code?: string;
 
-  constructor(message: string, options: { status?: number; code?: string } = {}) {
+  constructor(
+    message: string,
+    options: { status?: number; code?: string } = {},
+  ) {
     super(message);
     this.name = "JobApiError";
     this.status = options.status;
@@ -49,18 +55,76 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isEmployerJob(value: unknown): value is EmployerJob {
   if (!isRecord(value)) return false;
+  const validModes = ["ONSITE", "HYBRID", "REMOTE"];
+  const validStatuses = [
+    "DRAFT",
+    "PENDING_APPROVAL",
+    "PUBLISHED",
+    "REJECTED",
+    "CLOSED",
+  ];
+  const categoryIsValid =
+    value.category === null ||
+    (isRecord(value.category) &&
+      typeof value.category.id === "string" &&
+      typeof value.category.name === "string");
+  const skillsAreValid =
+    Array.isArray(value.skills) &&
+    value.skills.every((item) => {
+      if (
+        !isRecord(item) ||
+        typeof item.skillId !== "string" ||
+        typeof item.required !== "boolean" ||
+        typeof item.weight !== "number" ||
+        !Number.isFinite(item.weight)
+      )
+        return false;
+      return (
+        item.skill === null ||
+        (isRecord(item.skill) &&
+          typeof item.skill.id === "string" &&
+          typeof item.skill.name === "string" &&
+          typeof item.skill.normalizedName === "string")
+      );
+    });
   return (
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     typeof value.description === "string" &&
-    Array.isArray(value.skills) &&
-    ["DRAFT", "PENDING_APPROVAL", "PUBLISHED", "REJECTED", "CLOSED"].includes(
-      String(value.status),
-    )
+    (typeof value.location === "string" || value.location === null) &&
+    ((typeof value.workMode === "string" &&
+      validModes.includes(value.workMode)) ||
+      value.workMode === null) &&
+    (typeof value.categoryId === "string" || value.categoryId === null) &&
+    categoryIsValid &&
+    skillsAreValid &&
+    typeof value.status === "string" &&
+    validStatuses.includes(value.status)
   );
 }
 
-async function requestJobApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+function apiErrorMessage(status: number, payload: unknown): string {
+  if (status === 401) return "Your session has expired. Sign in again.";
+  if (status === 403) return "You do not have permission to manage this job.";
+  if (status === 404)
+    return "This job could not be found or is no longer available.";
+  if (status === 400) {
+    const code =
+      isRecord(payload) && typeof payload.code === "string" ? payload.code : "";
+    if (code === "CANNOT_EDIT_JOB") {
+      return "This job's status changed and it can no longer be edited. Reload the job list and try again.";
+    }
+    return "Some job details are invalid. Review the form and try again.";
+  }
+  if (status >= 500)
+    return "The job service is temporarily unavailable. Try again.";
+  return "The job could not be saved. Try again.";
+}
+
+async function requestJobApi<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   let token: string;
   try {
     token = await getWorkspaceAccessToken();
@@ -94,15 +158,11 @@ async function requestJobApi<T>(path: string, init: RequestInit = {}): Promise<T
   }
 
   if (!response.ok) {
-    const code = isRecord(payload) && typeof payload.code === "string" ? payload.code : undefined;
-    const message =
-      response.status === 401
-        ? "Your session has expired. Sign in again."
-        : response.status === 403
-          ? "You do not have permission to manage this job."
-          : isRecord(payload) && typeof payload.message === "string"
-            ? payload.message
-            : "The job could not be saved. Try again.";
+    const code =
+      isRecord(payload) && typeof payload.code === "string"
+        ? payload.code
+        : undefined;
+    const message = apiErrorMessage(response.status, payload);
     throw new JobApiError(message, { status: response.status, code });
   }
 
@@ -120,7 +180,9 @@ async function listEmployerJobs(): Promise<EmployerJobsPage> {
 }
 
 async function getEmployerJobsPage(page: number): Promise<EmployerJobsPage> {
-  const result = await requestJobApi<unknown>(`/jobs/my?page=${page}&pageSize=100`);
+  const result = await requestJobApi<unknown>(
+    `/jobs/my?page=${page}&pageSize=100`,
+  );
   if (
     !isRecord(result) ||
     !Array.isArray(result.data) ||
@@ -134,8 +196,11 @@ async function getEmployerJobsPage(page: number): Promise<EmployerJobsPage> {
 
 async function getEmployerJob(jobId: string): Promise<EmployerJob> {
   if (!jobId.trim()) throw new JobApiError("A job ID is required.");
-  const result = await requestJobApi<unknown>(`/jobs/my/${encodeURIComponent(jobId)}`);
-  if (!isEmployerJob(result)) throw new JobApiError("The job service returned invalid job data.");
+  const result = await requestJobApi<unknown>(
+    `/jobs/my/${encodeURIComponent(jobId)}`,
+  );
+  if (!isEmployerJob(result))
+    throw new JobApiError("The job service returned invalid job data.");
   return result;
 }
 
@@ -167,19 +232,34 @@ function mapEmployerJob(job: EmployerJob): JobPosting {
   };
 }
 
-function createJobDraft(input: CreateJobDraftInput): Promise<EmployerJob> {
-  return requestJobApi<EmployerJob>("/jobs", {
+async function createJobDraft(
+  input: CreateJobDraftInput,
+): Promise<EmployerJob> {
+  const result = await requestJobApi<unknown>("/jobs", {
     method: "POST",
     body: JSON.stringify(input),
   });
+  if (!isEmployerJob(result))
+    throw new JobApiError("The job service returned invalid job data.");
+  return result;
 }
 
-function updateJobDraft(jobId: string, input: UpdateJobInput): Promise<EmployerJob> {
-  if (!jobId.trim()) return Promise.reject(new JobApiError("A job ID is required."));
-  return requestJobApi<EmployerJob>(`/jobs/${encodeURIComponent(jobId)}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+async function updateJobDraft(
+  jobId: string,
+  input: UpdateJobInput,
+): Promise<EmployerJob> {
+  if (!jobId.trim())
+    return Promise.reject(new JobApiError("A job ID is required."));
+  const result = await requestJobApi<unknown>(
+    `/jobs/${encodeURIComponent(jobId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+  if (!isEmployerJob(result))
+    throw new JobApiError("The job service returned invalid job data.");
+  return result;
 }
 
 export {
