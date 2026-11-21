@@ -20,6 +20,7 @@ import {
   type EmployerJobListItem,
   type EmployerJobsPage,
   type EmployerJobsQuery,
+  type EmployerJobMutationAction,
 } from "../job-management/types";
 
 type JobManagementSectionProps = {
@@ -28,6 +29,10 @@ type JobManagementSectionProps = {
   error?: string;
   onRetry: () => void;
   onCloseJob: (jobId: string) => Promise<boolean>;
+  onJobAction: (
+    jobId: string,
+    action: EmployerJobMutationAction,
+  ) => Promise<boolean>;
   query: EmployerJobsQuery;
   onQueryChange: (query: Partial<EmployerJobsQuery>) => void;
 };
@@ -62,6 +67,7 @@ function JobManagementSection({
   error,
   loading = false,
   onCloseJob,
+  onJobAction,
   onQueryChange,
   onRetry,
   page,
@@ -71,10 +77,17 @@ function JobManagementSection({
   const [closeTarget, setCloseTarget] = useState<EmployerJobListItem | null>(
     null,
   );
+  const [actionTarget, setActionTarget] = useState<{
+    job: EmployerJobListItem;
+    action: Exclude<EmployerJobMutationAction, "close">;
+  } | null>(null);
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState("");
   const [notice, setNotice] = useState("");
   const closeInProgress = useRef(false);
+  const actionInProgress = useRef(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
   const mounted = useRef(true);
   const [searchInput, setSearchInput] = useState(query.search ?? "");
   const jobs = page?.data ?? [];
@@ -135,6 +148,50 @@ function JobManagementSection({
     } finally {
       closeInProgress.current = false;
       if (mounted.current) setClosing(false);
+    }
+  }
+
+  async function confirmAction() {
+    if (
+      !actionTarget ||
+      actionInProgress.current ||
+      !getEmployerJobActions(actionTarget.job.status).includes(
+        actionTarget.action,
+      )
+    )
+      return;
+    actionInProgress.current = true;
+    setActionBusy(true);
+    setActionError("");
+    setNotice("");
+    try {
+      const refreshed = await onJobAction(
+        actionTarget.job.id,
+        actionTarget.action,
+      );
+      if (!mounted.current) return;
+      const actionLabel =
+        actionTarget.action === "submit"
+          ? "submitted for review"
+          : actionTarget.action === "withdraw"
+            ? "returned to draft"
+            : "deleted";
+      setNotice(
+        refreshed
+          ? `${actionTarget.job.title} was ${actionLabel}.`
+          : `${actionTarget.job.title} was ${actionLabel}. The list could not be refreshed.`,
+      );
+      setActionTarget(null);
+    } catch (error) {
+      if (mounted.current)
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not update this job. Try again.",
+        );
+    } finally {
+      actionInProgress.current = false;
+      if (mounted.current) setActionBusy(false);
     }
   }
 
@@ -259,6 +316,44 @@ function JobManagementSection({
                     Close job
                   </Button>
                 ) : null}
+                {getEmployerJobActions(job.status).includes("submit") ? (
+                  <Button
+                    aria-label={`Submit ${job.title} for approval`}
+                    onClick={() => {
+                      setActionTarget({ job, action: "submit" });
+                      setActionError("");
+                    }}
+                    size="sm"
+                  >
+                    Submit for approval
+                  </Button>
+                ) : null}
+                {getEmployerJobActions(job.status).includes("withdraw") ? (
+                  <Button
+                    aria-label={`Withdraw ${job.title} to draft`}
+                    onClick={() => {
+                      setActionTarget({ job, action: "withdraw" });
+                      setActionError("");
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Withdraw to draft
+                  </Button>
+                ) : null}
+                {getEmployerJobActions(job.status).includes("delete") ? (
+                  <Button
+                    aria-label={`Delete draft ${job.title}`}
+                    onClick={() => {
+                      setActionTarget({ job, action: "delete" });
+                      setActionError("");
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Delete draft
+                  </Button>
+                ) : null}
               </div>
             </Card>
           ))}
@@ -362,6 +457,55 @@ function JobManagementSection({
             </Button>
             <Button disabled={closing} onClick={() => void confirmClose()}>
               {closing ? "Closing…" : "Confirm close"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
+      {actionTarget ? (
+        <Modal
+          aria-labelledby="job-action-title"
+          aria-modal="true"
+          className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:p-7"
+          onClose={() => {
+            if (!actionBusy) setActionTarget(null);
+          }}
+          role="dialog"
+        >
+          <h2
+            className="text-xl font-semibold text-slate-950"
+            id="job-action-title"
+          >
+            {actionTarget.action === "submit"
+              ? "Submit this job for approval?"
+              : actionTarget.action === "withdraw"
+                ? "Withdraw this job to draft?"
+                : "Delete this draft?"}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            <span className="font-semibold text-slate-900">
+              {actionTarget.job.title}
+            </span>{" "}
+            {actionTarget.action === "submit"
+              ? "will be sent to Admin for review. Your company must be verified."
+              : actionTarget.action === "withdraw"
+                ? "will return to Draft so it can be edited."
+                : "will be permanently removed. Only Draft jobs can be deleted."}
+          </p>
+          {actionError ? (
+            <div className="mt-4" role="alert">
+              <FeedbackMessage tone="error">{actionError}</FeedbackMessage>
+            </div>
+          ) : null}
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              disabled={actionBusy}
+              onClick={() => setActionTarget(null)}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button disabled={actionBusy} onClick={() => void confirmAction()}>
+              {actionBusy ? "Processing…" : "Confirm"}
             </Button>
           </div>
         </Modal>

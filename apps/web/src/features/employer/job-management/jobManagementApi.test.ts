@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { closeEmployerJob, listEmployerJobs } from "./jobManagementApi";
+import {
+  closeEmployerJob,
+  listEmployerJobs,
+  performEmployerJobAction,
+} from "./jobManagementApi";
 
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -238,6 +242,92 @@ describe("closeEmployerJob", () => {
     );
     await expect(closeEmployerJob("job-1")).rejects.toMatchObject({
       message: "The job service returned an invalid close result.",
+    });
+  });
+});
+
+describe("performEmployerJobAction", () => {
+  it.each([
+    ["submit", "/jobs/job-1/submit-approval", "PENDING_APPROVAL"],
+    ["withdraw", "/jobs/job-1/withdraw", "DRAFT"],
+  ] as const)(
+    "calls the backend %s transition",
+    async (action, endpoint, status) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          response({ accessToken: "access", tokenType: "Bearer" }),
+        )
+        .mockResolvedValueOnce(response({ ...job, status }));
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        performEmployerJobAction("job-1", action),
+      ).resolves.toMatchObject({ status });
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        expect.stringMatching(new RegExp(`${endpoint}$`)),
+        expect.objectContaining({ method: "POST" }),
+      );
+    },
+  );
+
+  it("deletes drafts only after the backend confirms deletion", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({ accessToken: "access", tokenType: "Bearer" }),
+      )
+      .mockResolvedValueOnce(
+        response({ success: true, message: "Draft job deleted successfully" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      performEmployerJobAction("job-1", "delete"),
+    ).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/\/jobs\/job-1$/),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("does not report a successful transition when the backend rejects it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          response({ accessToken: "access", tokenType: "Bearer" }),
+        )
+        .mockResolvedValueOnce(
+          response({ code: "INVALID_STATE_TRANSITION" }, 400),
+        ),
+    );
+    await expect(
+      performEmployerJobAction("job-1", "submit"),
+    ).rejects.toMatchObject({
+      status: 400,
+      message:
+        "This action is not available for the job's current status. Reload the list and try again.",
+    });
+  });
+
+  it("explains the verified-company prerequisite from the backend error code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          response({ accessToken: "access", tokenType: "Bearer" }),
+        )
+        .mockResolvedValueOnce(response({ code: "COMPANY_NOT_VERIFIED" }, 403)),
+    );
+    await expect(
+      performEmployerJobAction("job-1", "submit"),
+    ).rejects.toMatchObject({
+      status: 403,
+      message:
+        "Your company must be verified before submitting a job for approval.",
     });
   });
 });

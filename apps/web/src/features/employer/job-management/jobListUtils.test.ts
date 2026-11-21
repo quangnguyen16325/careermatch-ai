@@ -22,6 +22,18 @@ describe("employer job list helpers", () => {
     expect(getEmployerJobActions("REJECTED")).toEqual(["edit"]);
   });
 
+  it("exposes only the backend-authorized action matrix for each status", () => {
+    expect(getEmployerJobActions("DRAFT")).toEqual([
+      "edit",
+      "submit",
+      "delete",
+    ]);
+    expect(getEmployerJobActions("PENDING_APPROVAL")).toEqual(["withdraw"]);
+    expect(getEmployerJobActions("PUBLISHED")).toEqual(["close"]);
+    expect(getEmployerJobActions("REJECTED")).toEqual(["edit"]);
+    expect(getEmployerJobActions("CLOSED")).toEqual([]);
+  });
+
   it("allows closing only published jobs", () => {
     expect(getEmployerJobActions("PUBLISHED")).toContain("close");
     expect(getEmployerJobActions("DRAFT")).not.toContain("close");

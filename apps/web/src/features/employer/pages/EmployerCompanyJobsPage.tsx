@@ -8,6 +8,7 @@ import { mockCompanyProfile } from "../data/mockEmployerData";
 import {
   closeEmployerJob,
   listEmployerJobs,
+  performEmployerJobAction,
   EmployerJobsApiError,
 } from "../job-management/jobManagementApi";
 import { isCurrentEmployerJobsQuery } from "../job-management/jobListUtils";
@@ -15,6 +16,7 @@ import type { CompanyProfile } from "../types";
 import type {
   EmployerJobsPage,
   EmployerJobsQuery,
+  EmployerJobMutationAction,
 } from "../job-management/types";
 
 function EmployerCompanyJobsPage() {
@@ -131,6 +133,57 @@ function EmployerCompanyJobsPage() {
     [query],
   );
 
+  const runJobAction = useCallback(
+    async (jobId: string, action: EmployerJobMutationAction) => {
+      const activeVersion = ++requestVersion.current;
+      let ownedRequestVersion = activeVersion;
+      const queryAtStart = queryRef.current;
+      setLoadingJobs(true);
+      setJobsError("");
+      try {
+        const updatedJob = await performEmployerJobAction(jobId, action);
+        if (!mountedRef.current) return false;
+        setJobsPage((current) =>
+          current
+            ? {
+                ...current,
+                data:
+                  updatedJob === null
+                    ? current.data.filter((job) => job.id !== jobId)
+                    : current.data.map((job) =>
+                        job.id === jobId ? updatedJob : job,
+                      ),
+              }
+            : current,
+        );
+        if (!isCurrentEmployerJobsQuery(queryAtStart, queryRef.current))
+          return true;
+        const refreshVersion = ++requestVersion.current;
+        ownedRequestVersion = refreshVersion;
+        try {
+          const refreshed = await listEmployerJobs(queryAtStart);
+          if (
+            mountedRef.current &&
+            refreshVersion === requestVersion.current &&
+            isCurrentEmployerJobsQuery(queryAtStart, queryRef.current)
+          ) {
+            setJobsPage(refreshed);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      } finally {
+        if (
+          mountedRef.current &&
+          requestVersion.current === ownedRequestVersion
+        )
+          setLoadingJobs(false);
+      }
+    },
+    [],
+  );
+
   return (
     <WorkspaceLayout
       className="space-y-10 sm:space-y-12"
@@ -151,6 +204,7 @@ function EmployerCompanyJobsPage() {
             error={jobsError}
             loading={loadingJobs}
             onCloseJob={closeJob}
+            onJobAction={runJobAction}
             onQueryChange={updateQuery}
             onRetry={retryJobs}
             page={jobsPage}

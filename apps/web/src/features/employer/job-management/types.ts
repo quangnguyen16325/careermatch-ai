@@ -11,6 +11,8 @@ export type EmployerJobStatus = (typeof EMPLOYER_JOB_STATUSES)[number];
 export type EmployerJobAction =
   "edit" | "submit" | "withdraw" | "close" | "delete";
 
+export type EmployerJobMutationAction = Exclude<EmployerJobAction, "edit">;
+
 export type EmployerJobListItem = {
   id: string;
   title: string;

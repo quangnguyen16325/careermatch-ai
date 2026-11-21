@@ -7,6 +7,7 @@ import type {
   EmployerJobListItem,
   EmployerJobsPage,
   EmployerJobsQuery,
+  EmployerJobMutationAction,
 } from "./types";
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api/v1").replace(
@@ -94,26 +95,44 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function failureMessage(status: number, action: "list" | "close"): string {
+function failureMessage(
+  status: number,
+  action: "list" | EmployerJobMutationAction,
+  code?: string,
+): string {
   if (status === 401) return "Your session has expired. Please sign in again.";
+  if (code === "COMPANY_NOT_VERIFIED")
+    return "Your company must be verified before submitting a job for approval.";
   if (status === 403)
-    return action === "close"
-      ? "You do not have permission to close this job."
-      : "You do not have permission to view these jobs.";
+    return action === "list"
+      ? "You do not have permission to view these jobs."
+      : "You do not have permission to change this job.";
   if (status === 404)
-    return action === "close"
-      ? "This job could not be found."
-      : "The job list is not available.";
+    return action === "list"
+      ? "The job list is not available."
+      : "This job could not be found.";
   if (status === 400)
-    return "This job can no longer be closed. Reload the list and check its current status.";
+    return action === "close"
+      ? "This job can no longer be closed. Reload the list and check its current status."
+      : "This action is not available for the job's current status. Reload the list and try again.";
   if (status >= 500)
     return "The job service is temporarily unavailable. Try again.";
   return "Could not load job postings. Try again.";
 }
 
+async function readFailureMessage(
+  response: Response,
+  action: EmployerJobMutationAction,
+): Promise<string> {
+  const body = await readJson(response);
+  const code =
+    isRecord(body) && typeof body.code === "string" ? body.code : undefined;
+  return failureMessage(response.status, action, code);
+}
+
 async function authenticatedRequest(
   path: string,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   signal?: AbortSignal,
 ): Promise<Response> {
   let token: string;
@@ -186,19 +205,74 @@ export async function closeEmployerJob(
     throw new EmployerJobsApiError(
       "A job ID is required before closing a posting.",
     );
+  return updateEmployerJob(jobId, "close", "CLOSED");
+}
+
+const ACTION_ENDPOINTS: Record<EmployerJobMutationAction, string> = {
+  close: "close",
+  delete: "",
+  submit: "submit-approval",
+  withdraw: "withdraw",
+};
+
+const ACTION_STATUSES = {
+  close: "CLOSED",
+  submit: "PENDING_APPROVAL",
+  withdraw: "DRAFT",
+} as const;
+
+async function updateEmployerJob(
+  jobId: string,
+  action: Exclude<EmployerJobMutationAction, "delete">,
+  expectedStatus: (typeof ACTION_STATUSES)[typeof action],
+): Promise<EmployerJobListItem> {
+  if (!jobId.trim())
+    throw new EmployerJobsApiError(
+      "A job ID is required before changing a posting.",
+    );
   const response = await authenticatedRequest(
-    `/jobs/${encodeURIComponent(jobId)}/close`,
+    `/jobs/${encodeURIComponent(jobId)}/${ACTION_ENDPOINTS[action]}`,
     "POST",
   );
   if (!response.ok)
     throw new EmployerJobsApiError(
-      failureMessage(response.status, "close"),
+      await readFailureMessage(response, action),
       response.status,
     );
   const result: unknown = await readJson(response);
-  if (!isJob(result) || result.status !== "CLOSED")
+  if (!isJob(result) || result.status !== expectedStatus)
     throw new EmployerJobsApiError(
-      "The job service returned an invalid close result.",
+      action === "close"
+        ? "The job service returned an invalid close result."
+        : "The job service returned an invalid status update.",
     );
   return result;
+}
+
+export async function performEmployerJobAction(
+  jobId: string,
+  action: EmployerJobMutationAction,
+): Promise<EmployerJobListItem | null> {
+  if (action === "delete") {
+    if (!jobId.trim())
+      throw new EmployerJobsApiError(
+        "A job ID is required before deleting a draft.",
+      );
+    const response = await authenticatedRequest(
+      `/jobs/${encodeURIComponent(jobId)}`,
+      "DELETE",
+    );
+    if (!response.ok)
+      throw new EmployerJobsApiError(
+        await readFailureMessage(response, action),
+        response.status,
+      );
+    const result: unknown = await readJson(response);
+    if (!isRecord(result) || result.success !== true)
+      throw new EmployerJobsApiError(
+        "The job service did not confirm draft deletion.",
+      );
+    return null;
+  }
+  return updateEmployerJob(jobId, action, ACTION_STATUSES[action]);
 }
