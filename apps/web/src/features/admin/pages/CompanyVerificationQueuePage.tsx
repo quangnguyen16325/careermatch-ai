@@ -20,6 +20,10 @@ import {
   decideCompanyVerification,
   getCompanyVerificationQueue,
 } from "../company-verification/companyVerificationApi";
+import {
+  getDecisionErrorMessage,
+  getQueueErrorMessage,
+} from "../company-verification/companyVerificationErrors";
 import { validateCompanyVerificationDecision } from "../company-verification/validation";
 import type {
   CompanyVerificationDecision,
@@ -65,9 +69,19 @@ function CompanyVerificationQueuePage() {
   const [decisionReason, setDecisionReason] = useState("");
   const [decisionError, setDecisionError] = useState("");
   const [decisionFieldError, setDecisionFieldError] = useState("");
+  const [decisionRequiresRefresh, setDecisionRequiresRefresh] = useState(false);
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const submittingDecisionRef = useRef(false);
   const [successNotice, setSuccessNotice] = useState("");
+  const decisionRefreshPendingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,16 +96,24 @@ function CompanyVerificationQueuePage() {
       controller.signal,
     ).then(
       (result) => {
+        if (controller.signal.aborted) return;
         if (page > 1 && page > result.meta.totalPages) {
           setPage(Math.max(1, result.meta.totalPages));
           setQueue({ status: "loading" });
           return;
         }
         setQueue({ status: "success", result });
+        decisionRefreshPendingRef.current = false;
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;
-        setQueue({ status: "error", message: getQueueErrorMessage(error) });
+        setQueue({
+          status: "error",
+          message: getQueueErrorMessage(
+            error,
+            decisionRefreshPendingRef.current,
+          ),
+        });
       },
     );
 
@@ -130,6 +152,7 @@ function CompanyVerificationQueuePage() {
     setDecisionReason("");
     setDecisionError("");
     setDecisionFieldError("");
+    setDecisionRequiresRefresh(false);
   }
 
   async function submitDecision() {
@@ -150,6 +173,8 @@ function CompanyVerificationQueuePage() {
     setDecisionFieldError("");
     try {
       await decideCompanyVerification(decisionTarget.company.id, decision);
+      if (!mountedRef.current) return;
+      decisionRefreshPendingRef.current = true;
       setSuccessNotice(
         `${getDecisionLabel(decisionTarget.status, decisionTarget.company.verificationStatus)} confirmed by the server.`,
       );
@@ -158,10 +183,30 @@ function CompanyVerificationQueuePage() {
       setQueue({ status: "loading" });
       setRetryCount((count) => count + 1);
     } catch (error) {
-      setDecisionError(getDecisionErrorMessage(error));
+      if (!mountedRef.current) return;
+      if (
+        error instanceof CompanyVerificationApiError &&
+        error.code === "REJECTION_REASON_REQUIRED"
+      ) {
+        setDecisionFieldError(
+          "Enter a rejection reason of at least 10 characters after trimming.",
+        );
+        setDecisionError("");
+      } else {
+        setDecisionError(getDecisionErrorMessage(error));
+      }
+      setDecisionRequiresRefresh(
+        error instanceof CompanyVerificationApiError &&
+          (error.code === "INVALID_STATE_TRANSITION" ||
+            error.code === "COMPANY_NOT_FOUND" ||
+            error.code === "NETWORK_ERROR" ||
+            error.code === "INVALID_RESPONSE" ||
+            error.status === null ||
+            (error.status !== null && error.status >= 500)),
+      );
     } finally {
       submittingDecisionRef.current = false;
-      setIsSubmittingDecision(false);
+      if (mountedRef.current) setIsSubmittingDecision(false);
     }
   }
 
@@ -254,12 +299,22 @@ function CompanyVerificationQueuePage() {
           busy={isSubmittingDecision}
           company={decisionTarget.company}
           error={decisionError}
+          onRefresh={() => {
+            if (isSubmittingDecision) return;
+            setDecisionTarget(null);
+            setDecisionReason("");
+            setDecisionError("");
+            setDecisionFieldError("");
+            setDecisionRequiresRefresh(false);
+            retryLoading();
+          }}
           onCancel={() => {
             if (isSubmittingDecision) return;
             setDecisionTarget(null);
             setDecisionReason("");
             setDecisionError("");
             setDecisionFieldError("");
+            setDecisionRequiresRefresh(false);
           }}
           onReasonChange={(value) => {
             setDecisionReason(value);
@@ -269,6 +324,7 @@ function CompanyVerificationQueuePage() {
           reason={decisionReason}
           validationError={decisionFieldError}
           status={decisionTarget.status}
+          canRefresh={decisionRequiresRefresh}
         />
       ) : null}
     </div>
@@ -457,21 +513,25 @@ function CompanyVerificationDecisionDialog({
   company,
   error,
   onCancel,
+  onRefresh,
   onReasonChange,
   onSubmit,
   reason,
   status,
   validationError,
+  canRefresh,
 }: {
   busy: boolean;
   company: CompanyVerificationQueueItem;
   error: string;
   onCancel: () => void;
+  onRefresh: () => void;
   onReasonChange: (reason: string) => void;
   onSubmit: () => void;
   reason: string;
   status: CompanyVerificationDecision["status"];
   validationError: string;
+  canRefresh: boolean;
 }) {
   const actionLabel = getDecisionLabel(status, company.verificationStatus);
   const requiresReason = status === "REJECTED";
@@ -525,6 +585,11 @@ function CompanyVerificationDecisionDialog({
         <Button disabled={busy} onClick={onCancel} variant="secondary">
           Cancel
         </Button>
+        {canRefresh ? (
+          <Button disabled={busy} onClick={onRefresh} variant="secondary">
+            Reload queue
+          </Button>
+        ) : null}
         <Button
           disabled={busy}
           onClick={onSubmit}
@@ -638,21 +703,6 @@ function getStatusTone(status: CompanyVerificationStatus): StatusTone {
   return "danger";
 }
 
-function getQueueErrorMessage(error: unknown): string {
-  if (!(error instanceof CompanyVerificationApiError)) {
-    return "Could not load company verification requests. Check your connection and retry.";
-  }
-  if (error.status === 401)
-    return "Your session has expired. Sign in again, then retry.";
-  if (error.status === 403)
-    return "Your account does not have permission to view this queue.";
-  if (error.status === null)
-    return `${error.message} Check your connection and retry.`;
-  if (error.status >= 500)
-    return "The company verification service is unavailable. Retry in a moment.";
-  return error.message;
-}
-
 function getAvailableDecisions(
   currentStatus: CompanyVerificationStatus,
 ): CompanyVerificationDecision["status"][] {
@@ -688,24 +738,6 @@ function getDecisionValidationMessage(
   return "The reason must be no longer than 1000 characters.";
 }
 
-function getDecisionErrorMessage(error: unknown): string {
-  if (!(error instanceof CompanyVerificationApiError))
-    return "The decision could not be confirmed. Refresh the queue before retrying.";
-  if (error.code === "INVALID_STATE_TRANSITION")
-    return "This company’s status changed or this action is no longer allowed. Refresh the queue and review it again.";
-  if (error.code === "COMPANY_NOT_FOUND")
-    return "This company no longer exists. Refresh the queue.";
-  if (error.status === 401)
-    return "Your session has expired. Sign in again before retrying.";
-  if (error.status === 403)
-    return "Your account does not have permission to decide company verification.";
-  if (error.status === null)
-    return `${error.message} No successful response was received; retry manually.`;
-  if (error.status >= 500)
-    return "The company verification service is unavailable. Retry in a moment.";
-  return error.message;
-}
-
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Date unavailable";
@@ -715,4 +747,7 @@ function formatDate(value: string): string {
   }).format(date);
 }
 
-export { CompanyVerificationDetailDialog, CompanyVerificationQueuePage };
+export {
+  CompanyVerificationDetailDialog,
+  CompanyVerificationQueuePage,
+};

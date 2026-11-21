@@ -139,6 +139,22 @@ describe("getCompanyVerificationQueue", () => {
       code: "NETWORK_ERROR",
     });
   });
+
+  it("discards a response that arrives after the request was aborted", async () => {
+    const controller = new AbortController();
+    let resolveResponse!: (response: Response) => void;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        resolveResponse = resolve;
+      }),
+    );
+    const request = getCompanyVerificationQueue({}, controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+    resolveResponse(jsonResponse(queueResponse));
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  });
 });
 
 describe("decideCompanyVerification", () => {
@@ -206,6 +222,18 @@ describe("decideCompanyVerification", () => {
     expect(accessTokenMock).not.toHaveBeenCalled();
   });
 
+  it("does not call the mutation endpoint when the session is unauthenticated", async () => {
+    accessTokenMock.mockResolvedValueOnce({ status: "unauthenticated" });
+
+    await expect(
+      decideCompanyVerification("company-1", { status: "VERIFIED" }),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "AUTHENTICATION_REQUIRED",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("does not treat an error response as a successful decision", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
@@ -234,6 +262,62 @@ describe("decideCompanyVerification", () => {
     await expect(
       decideCompanyVerification("company-1", { status: "VERIFIED" }),
     ).rejects.toMatchObject({ status: 403, code: "FORBIDDEN" });
+  });
+
+  it("preserves backend not-found and transition error codes", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "COMPANY_NOT_FOUND", message: "Company not found" }, 404),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { code: "INVALID_STATE_TRANSITION", message: "Status has changed" },
+          400,
+        ),
+      );
+
+    await expect(
+      decideCompanyVerification("missing-company", { status: "VERIFIED" }),
+    ).rejects.toMatchObject({ status: 404, code: "COMPANY_NOT_FOUND" });
+    await expect(
+      decideCompanyVerification("company-1", { status: "VERIFIED" }),
+    ).rejects.toMatchObject({ status: 400, code: "INVALID_STATE_TRANSITION" });
+  });
+
+  it("uses a safe fallback instead of exposing stack details from error responses", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: "Internal error at CompaniesService.ts:123" }, 500),
+    );
+
+    await expect(
+      decideCompanyVerification("company-1", { status: "VERIFIED" }),
+    ).rejects.toMatchObject({
+      status: 500,
+      message: "The company verification decision could not be completed.",
+    });
+  });
+
+  it("allows an explicit manual retry after a failed mutation without auto-retrying", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { code: "INVALID_STATE_TRANSITION", message: "Status changed" },
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "company-1", verificationStatus: "VERIFIED" }),
+      );
+
+    await expect(
+      decideCompanyVerification("company-1", { status: "VERIFIED" }),
+    ).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(
+      decideCompanyVerification("company-1", { status: "VERIFIED" }),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("requires the response to confirm the requested company and status", async () => {

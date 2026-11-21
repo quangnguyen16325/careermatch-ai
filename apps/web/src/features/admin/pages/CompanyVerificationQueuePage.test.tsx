@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { CompanyVerificationDetailDialog } from "./CompanyVerificationQueuePage";
+import { getQueueErrorMessage } from "../company-verification/companyVerificationErrors";
 import type { CompanyVerificationQueueItem } from "../company-verification/types";
 
 const company: CompanyVerificationQueueItem = {
@@ -56,5 +57,19 @@ describe("CompanyVerificationDetailDialog", () => {
     expect(markup).toContain("Not provided");
     expect(markup).not.toContain("A company description");
     expect(markup).not.toContain("TAX-001");
+  });
+});
+
+describe("company verification queue errors", () => {
+  it("distinguishes a saved decision from a failed list refresh", () => {
+    expect(getQueueErrorMessage(new Error("network error"), true)).toMatch(
+      /decision was saved.*could not be refreshed/i,
+    );
+  });
+
+  it("offers a retry-oriented message for a regular queue load failure", () => {
+    expect(getQueueErrorMessage(new Error("network error"))).toMatch(
+      /could not load.*retry/i,
+    );
   });
 });

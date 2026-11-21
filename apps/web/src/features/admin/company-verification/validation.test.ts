@@ -39,11 +39,35 @@ describe("validateCompanyVerificationDecision", () => {
         reason: "x".repeat(1001),
       }),
     ).toBe("reason-too-long");
+  });
+
+  it("accepts the exact minimum and rejects a nine-character trimmed reason", () => {
+    expect(
+      validateCompanyVerificationDecision({
+        status: "REJECTED",
+        reason: "123456789",
+      }),
+    ).toBe("reason-too-short");
+    expect(
+      validateCompanyVerificationDecision({
+        status: "REJECTED",
+        reason: "  1234567890  ",
+      }),
+    ).toBeNull();
+  });
+
+  it("allows a 1000-character reason and rejects 1001 characters", () => {
     expect(
       validateCompanyVerificationDecision({
         status: "REJECTED",
         reason: "x".repeat(1000),
       }),
     ).toBeNull();
+    expect(
+      validateCompanyVerificationDecision({
+        status: "REJECTED",
+        reason: "x".repeat(1001),
+      }),
+    ).toBe("reason-too-long");
   });
 });

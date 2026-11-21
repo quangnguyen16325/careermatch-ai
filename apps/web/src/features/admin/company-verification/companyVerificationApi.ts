@@ -88,9 +88,17 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error("The request was aborted.");
+  error.name = "AbortError";
+  throw error;
+}
+
 function errorFromResponse(
   status: number,
   payload: unknown,
+  fallbackMessage: string,
 ): CompanyVerificationApiError {
   const code =
     isJsonObject(payload) && typeof payload.code === "string"
@@ -99,20 +107,24 @@ function errorFromResponse(
   const backendMessage = isJsonObject(payload) ? payload.message : undefined;
   const message =
     typeof backendMessage === "string"
-      ? backendMessage
+      ? getSafeBackendMessage(backendMessage, fallbackMessage)
       : Array.isArray(backendMessage)
-        ? backendMessage
-            .filter((part): part is string => typeof part === "string")
-            .join(" ")
-        : status === 401
-          ? "Your session has expired. Sign in again and retry."
-          : status === 403
-            ? "Your account does not have permission to view company verification."
-            : status >= 500
-              ? "The company verification service is unavailable. Try again later."
-              : "The company list could not be loaded.";
+        ? getSafeBackendMessage(
+            backendMessage
+              .filter((part): part is string => typeof part === "string")
+              .join(" "),
+            fallbackMessage,
+          )
+        : fallbackMessage;
 
   return new CompanyVerificationApiError(message, status, code);
+}
+
+function getSafeBackendMessage(message: string, fallbackMessage: string): string {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (!normalized || /\b(?:stack|traceback| at [\w./\\-]+:\d+)\b/i.test(normalized))
+    return fallbackMessage;
+  return normalized.slice(0, 400);
 }
 
 async function getCompanyVerificationQueue(
@@ -159,8 +171,15 @@ async function getCompanyVerificationQueue(
     );
   }
 
+  throwIfAborted(signal);
   const payload = await readJson(response);
-  if (!response.ok) throw errorFromResponse(response.status, payload);
+  throwIfAborted(signal);
+  if (!response.ok)
+    throw errorFromResponse(
+      response.status,
+      payload,
+      "The company list could not be loaded.",
+    );
   if (!isQueueResponse(payload)) {
     throw new CompanyVerificationApiError(
       "The company verification service returned an unexpected response.",
@@ -242,7 +261,7 @@ async function decideCompanyVerification(
     );
   } catch {
     throw new CompanyVerificationApiError(
-      "Could not connect to the company verification service. The decision was not confirmed; retry manually.",
+      "Could not connect to the company verification service. The decision outcome is unknown; refresh the queue before submitting again.",
       null,
       "NETWORK_ERROR",
     );
@@ -250,7 +269,11 @@ async function decideCompanyVerification(
 
   const responseBody = await readJson(response);
   if (!response.ok) {
-    const apiError = errorFromResponse(response.status, responseBody);
+    const apiError = errorFromResponse(
+      response.status,
+      responseBody,
+      "The company verification decision could not be completed.",
+    );
     throw new CompanyVerificationApiError(
       apiError.message,
       apiError.status,
